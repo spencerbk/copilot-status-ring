@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 sessionStart", "bash": ".github/hooks/run-hook.sh sessionStart" }
+    ],
+    "sessionEnd": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 sessionEnd", "bash": ".github/hooks/run-hook.sh sessionEnd" }
+    ],
+    "userPromptSubmitted": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 userPromptSubmitted", "bash": ".github/hooks/run-hook.sh userPromptSubmitted" }
+    ],
+    "preToolUse": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 preToolUse", "bash": ".github/hooks/run-hook.sh preToolUse" }
+    ],
+    "postToolUse": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 postToolUse", "bash": ".github/hooks/run-hook.sh postToolUse" }
+    ],
+    "postToolUseFailure": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 postToolUseFailure", "bash": ".github/hooks/run-hook.sh postToolUseFailure" }
+    ],
+    "permissionRequest": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 permissionRequest", "bash": ".github/hooks/run-hook.sh permissionRequest" }
+    ],
+    "subagentStart": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 subagentStart", "bash": ".github/hooks/run-hook.sh subagentStart" }
+    ],
+    "subagentStop": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 subagentStop", "bash": ".github/hooks/run-hook.sh subagentStop" }
+    ],
+    "agentStop": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 agentStop", "bash": ".github/hooks/run-hook.sh agentStop" }
+    ],
+    "preCompact": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 preCompact", "bash": ".github/hooks/run-hook.sh preCompact" }
+    ],
+    "errorOccurred": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 errorOccurred", "bash": ".github/hooks/run-hook.sh errorOccurred" }
+    ]
+  }
+}

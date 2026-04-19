@@ -1,0 +1,5 @@
+{
+  "trigger": "context_overflow",
+  "contextLength": 128000,
+  "maxContext": 128000
+}

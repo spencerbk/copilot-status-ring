@@ -1,0 +1,5 @@
+{
+  "toolName": "edit",
+  "toolCallId": "call_001",
+  "input": {"path": "src/main.py", "content": "print('hello')"}
+}

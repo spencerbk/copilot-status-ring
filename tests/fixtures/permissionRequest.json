@@ -1,0 +1,5 @@
+{
+  "toolName": "bash",
+  "toolCallId": "call_004",
+  "input": {"command": "rm -rf /tmp/cache"}
+}

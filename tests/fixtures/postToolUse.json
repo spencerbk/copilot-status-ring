@@ -1,0 +1,8 @@
+{
+  "toolName": "read_file",
+  "toolCallId": "call_002",
+  "toolResult": {
+    "resultType": "success",
+    "output": "file contents here"
+  }
+}

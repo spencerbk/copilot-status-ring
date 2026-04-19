@@ -1,0 +1,10 @@
+{
+  "serial_port": "COM7",
+  "baud": 115200,
+  "pixel_count": 24,
+  "brightness": 0.08,
+  "idle_mode": "off",
+  "device_match": {
+    "description_contains": ["CircuitPython", "Arduino", "USB Serial"]
+  }
+}

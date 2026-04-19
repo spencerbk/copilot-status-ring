@@ -1,0 +1,8 @@
+{
+  "error": {
+    "name": "RateLimitError",
+    "message": "API rate limit exceeded"
+  },
+  "recoverable": true,
+  "errorContext": "model_request"
+}
