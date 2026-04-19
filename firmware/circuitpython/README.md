@@ -4,7 +4,7 @@ CircuitPython firmware for the Copilot Command Ring.
 
 ## Requirements
 
-- CircuitPython 9.x+ board with native USB
+- CircuitPython 10.x board with native USB
 - `neopixel` library from the Adafruit CircuitPython Bundle
 
 ## Setup
