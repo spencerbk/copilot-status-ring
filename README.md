@@ -33,7 +33,7 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 |-----------|---------|
 | **NeoPixel Ring** | [Adafruit NeoPixel Ring 24](https://www.adafruit.com/product/1586) — 24 × WS2812B RGB LEDs |
 | **Microcontroller** | Any USB-capable board: RP2040/RP2350 (Pico, XIAO), ESP32-S2/S3/C6 (QT Py, XIAO), Feather M4, etc. |
-| **Data resistor** | 300–500 Ω in series on the NeoPixel data line |
+| **Data resistor** *(optional)* | 300–500 Ω in series on the NeoPixel data line |
 | **Power capacitor** | 500–1000 µF electrolytic across NeoPixel VCC/GND |
 | **Level shifter** *(optional)* | 74AHCT125 for 3.3 V boards driving 5 V NeoPixels |
 
@@ -98,7 +98,7 @@ Configuration is resolved in this order: **environment variable > config file > 
 |----------|---------|-------------|
 | `COPILOT_RING_PORT` | *(auto-detect)* | Serial port (e.g., `COM7`, `/dev/ttyACM0`) |
 | `COPILOT_RING_BAUD` | `115200` | Baud rate |
-| `COPILOT_RING_BRIGHTNESS` | `0.08` | LED brightness (`0.0`–`1.0`) |
+| `COPILOT_RING_BRIGHTNESS` | `0.04` | LED brightness (`0.0`–`1.0`) |
 | `COPILOT_RING_LOG_LEVEL` | `WARNING` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `COPILOT_RING_DRY_RUN` | `false` | If `true`, log messages to stderr instead of sending to serial |
 
@@ -110,10 +110,10 @@ Create `.copilot-command-ring.local.json` in the repo root (git-ignored):
 {
   "serial_port": "COM7",
   "baud": 115200,
-  "brightness": 0.08,
+  "brightness": 0.04,
   "idle_mode": "off",
   "device_match": {
-    "description_contains": ["CircuitPython", "Arduino", "USB Serial"]
+    "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial"]
   }
 }
 ```
@@ -128,10 +128,10 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 |-------|-------|-----------|-------|
 | `sessionStart` | `session_start` | wipe | warm white |
 | `userPromptSubmitted` | `prompt_submitted` | wipe | blue |
-| `preToolUse` | `working` | spinner | amber |
+| `preToolUse` | `working` | spinner | purple |
 | `postToolUse` | `tool_ok` | flash | green |
 | `postToolUseFailure` | `tool_error` | flash | red |
-| `permissionRequest` | `awaiting_permission` | blink | yellow |
+| `permissionRequest` | `working` | spinner | purple |
 | `subagentStart` | `subagent_active` | chase | purple |
 | `subagentStop` | `idle` | off | — |
 | `agentStop` | `agent_idle` | breathing | dim white |

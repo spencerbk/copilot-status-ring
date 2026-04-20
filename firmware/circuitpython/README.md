@@ -4,7 +4,7 @@ CircuitPython firmware for the Copilot Command Ring.
 
 ## Requirements
 
-- CircuitPython 9.x+ board with native USB
+- CircuitPython 10.x board with native USB
 - `neopixel` library from the Adafruit CircuitPython Bundle
 
 ## Setup
@@ -16,17 +16,17 @@ CircuitPython firmware for the Copilot Command Ring.
 
 ## Files
 
-- `boot.py` — Enables `usb_cdc.data` for host communication.
+- `boot.py` — Sets custom USB product name ("Copilot Command Ring") and enables `usb_cdc.data` for host communication.
 - `code.py` — Main firmware with state machine and animations.
 
 ## Pin configuration
 
-The firmware defaults to `board.D6` for the NeoPixel data line. Some boards expose different pin names:
+The NeoPixel data pin depends on your board. Edit `NEOPIXEL_PIN` at the top of `code.py` to match:
 
 | Board | Pin to use |
 |-------|-----------|
-| Raspberry Pi Pico | `board.GP6` — change from default `D6` |
-| Adafruit Feather RP2040 | `board.D6` (default works) |
+| Raspberry Pi Pico | `board.GP6` |
+| Adafruit Feather RP2040 | `board.D6` |
 | Adafruit QT Py RP2040 / ESP32-S2 / ESP32-S3 | `board.A0` — **no `D6` on QT Py boards** |
 | Seeed Studio XIAO RP2350 / ESP32-C6 | `board.D6` (default works) |
 

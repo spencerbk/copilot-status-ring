@@ -129,10 +129,10 @@ Use a small, stable visual vocabulary.
 |---|---|---|---|
 | `sessionStart` | `session_start` | soft white wipe | session opened or resumed |
 | `userPromptSubmitted` | `prompt_submitted` | blue clockwise sweep | user submitted prompt |
-| `preToolUse` | `working` | amber spinner | active tool execution |
+| `preToolUse` | `working` | purple spinner | active tool execution |
 | `postToolUse` success | `tool_ok` | short green flash | tool finished successfully |
 | `postToolUseFailure` | `tool_error` | red flash | tool failed |
-| `permissionRequest` | `awaiting_permission` | yellow blink | waiting on user approval |
+| `permissionRequest` | `working` | purple spinner | continues working animation |
 | `subagentStart` | `subagent_active` | purple chase | delegated work started |
 | `subagentStop` | `idle` | return to idle | delegated work ended |
 | `agentStop` | `agent_idle` | dim white breathing | main agent completed turn |
@@ -188,7 +188,7 @@ Every message must include:
 {"event":"preToolUse","state":"working","tool":"edit"}
 {"event":"postToolUse","state":"tool_ok","tool":"edit","result":"success"}
 {"event":"postToolUseFailure","state":"tool_error","tool":"bash","error":"Command failed"}
-{"event":"permissionRequest","state":"awaiting_permission","tool":"bash"}
+{"event":"permissionRequest","state":"working","tool":"bash"}
 {"event":"subagentStart","state":"subagent_active","agent":"reviewer"}
 {"event":"agentStop","state":"agent_idle","reason":"end_turn"}
 {"event":"sessionEnd","state":"off","reason":"user_exit"}
@@ -417,8 +417,9 @@ Provide debug logging behind env var or config.
 
 ### `boot.py`
 
-Enable USB CDC data channel:
+Enable USB CDC data channel and set custom USB product name:
 
+- set USB product name to "Copilot Command Ring" for reliable auto-detection
 - keep console enabled
 - enable data channel
 
@@ -619,10 +620,10 @@ Support:
   "serial_port": "COM7",
   "baud": 115200,
   "pixel_count": 24,
-  "brightness": 0.08,
+  "brightness": 0.04,
   "idle_mode": "off",
   "device_match": {
-    "description_contains": ["CircuitPython", "Arduino", "USB Serial"]
+    "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial"]
   }
 }
 ```
@@ -776,7 +777,7 @@ Extract `toolName`.
 Output:
 
 ```json
-{"event":"permissionRequest","state":"awaiting_permission","tool":"bash"}
+{"event":"permissionRequest","state":"working","tool":"bash"}
 ```
 
 ### `subagentStart`

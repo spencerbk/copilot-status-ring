@@ -19,17 +19,19 @@ import usb_cdc
 #   Feather RP2040 / XIAO RP2350 / XIAO ESP32-C6: board.D6 (default)
 #   Raspberry Pi Pico / Pico W:                    board.GP6
 #   QT Py RP2040 / QT Py ESP32-S2 / QT Py ESP32-S3: board.A0
-NEOPIXEL_PIN = board.D6
+NEOPIXEL_PIN = board.GP6
 NUM_PIXELS = 24
-BRIGHTNESS = 0.08  # keep low to avoid blinding / power issues
+BRIGHTNESS = 0.04  # keep low to avoid blinding / power issues
+BRIGHTNESS_BOOST = 0.02  # extra brightness for dim states (breathing)
 PIXEL_ORDER = neopixel.GRB
+SPINNER_WIDTH = 6  # number of LEDs in the spinner segment
 LOOP_DELAY = 0.02  # ~50 fps
 
 # ── Color palette ──────────────────────────────────────────────────────────
 COLOR_OFF = (0, 0, 0)
 COLOR_SESSION_START = (60, 60, 50)     # warm white
 COLOR_PROMPT = (0, 80, 200)            # blue
-COLOR_WORKING = (200, 120, 0)          # amber
+COLOR_WORKING = (163, 113, 247)          # copilot purple (#A371F7)
 COLOR_TOOL_OK = (0, 200, 0)            # green
 COLOR_TOOL_ERROR = (200, 0, 0)         # red
 COLOR_PERMISSION = (200, 200, 0)       # yellow
@@ -45,7 +47,7 @@ STATE_MAP = {
     "idle":                ("off",       COLOR_OFF,           {}),
     "session_start":       ("wipe",      COLOR_SESSION_START, {"duration": 0.8}),
     "prompt_submitted":    ("wipe",      COLOR_PROMPT,        {"duration": 0.8}),
-    "working":             ("spinner",   COLOR_WORKING,       {"width": 3, "period": 1.0}),
+    "working":             ("spinner",   COLOR_WORKING,       {"width": SPINNER_WIDTH, "period": 1.0}),
     "tool_ok":             ("flash",     COLOR_TOOL_OK,       {"duration": 0.3}),
     "tool_error":          ("flash",     COLOR_TOOL_ERROR,    {"duration": 0.3}),
     "awaiting_permission": ("blink",     COLOR_PERMISSION,    {"period": 0.6}),
@@ -58,6 +60,9 @@ STATE_MAP = {
 
 # States that auto-return to the previous state after their animation
 TRANSIENT_STATES = {"tool_ok", "tool_error", "error", "notify"}
+
+# States that get a brightness boost for visibility
+BOOSTED_STATES = {"agent_idle"}
 
 
 # ── Animation engine ───────────────────────────────────────────────────────
@@ -82,6 +87,11 @@ class StatusRing:
             self.state = new_state
             self.state_start = time.monotonic()
             self.step = 0
+            # Boost brightness for dim states, restore for others
+            if new_state in BOOSTED_STATES:
+                self.pixels.brightness = BRIGHTNESS + BRIGHTNESS_BOOST
+            elif self.prev_state in BOOSTED_STATES:
+                self.pixels.brightness = BRIGHTNESS
 
     # ── tick dispatcher ────────────────────────────────────────────────
 
@@ -129,6 +139,9 @@ class StatusRing:
         self.state = target
         self.state_start = time.monotonic()
         self.step = 0
+        # Re-apply brightness boost if reverting to a boosted state
+        if target in BOOSTED_STATES:
+            self.pixels.brightness = BRIGHTNESS + BRIGHTNESS_BOOST
 
     # ── animation implementations ──────────────────────────────────────
 

@@ -29,10 +29,10 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 |-------|-------|-----------|-------|------------------|
 | `sessionStart` | `session_start` | Soft white wipe | White | — |
 | `userPromptSubmitted` | `prompt_submitted` | Wipe | Blue | — |
-| `preToolUse` | `working` | Spinner | Amber | `tool` |
+| `preToolUse` | `working` | Spinner | Purple | `tool` |
 | `postToolUse` (success) | `tool_ok` | Short flash | Green | `tool`, `result` |
 | `postToolUseFailure` | `tool_error` | Red flash | Red | `tool`, `error` |
-| `permissionRequest` | `awaiting_permission` | Blink | Yellow | `tool` |
+| `permissionRequest` | `working` | Spinner | Purple | `tool` |
 | `subagentStart` | `subagent_active` | Chase | Purple | `agent` |
 | `subagentStop` | `idle` | Return to idle | — | `agent` |
 | `agentStop` | `agent_idle` | Dim breathing | White (dim) | `reason` |
@@ -80,7 +80,7 @@ These are the exact JSON Lines the host bridge sends over serial. Each is a sing
 ### Permissions
 
 ```json
-{"event":"permissionRequest","state":"awaiting_permission","tool":"bash"}
+{"event":"permissionRequest","state":"working","tool":"bash"}
 ```
 
 ### Sub-agents
