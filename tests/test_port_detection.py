@@ -109,3 +109,22 @@ def test_comports_exception_returns_none():
     with patch("serial.tools.list_ports.comports", side_effect=OSError("USB error")):
         result = detect_serial_port(cfg)
     assert result is None
+
+
+# ── pyserial not installed ────────────────────────────────────────────────
+
+
+def test_pyserial_import_error_returns_none():
+    """When pyserial is not installed, auto-detect returns None."""
+    cfg = Config(serial_port=None)
+
+    real_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+
+    def _block_serial_import(name, *args, **kwargs):
+        if name == "serial.tools.list_ports":
+            raise ImportError("No module named 'serial'")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=_block_serial_import):
+        result = detect_serial_port(cfg)
+    assert result is None

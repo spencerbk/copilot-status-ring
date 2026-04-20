@@ -17,7 +17,7 @@ CircuitPython firmware for the Copilot Command Ring.
 ## Files
 
 - `boot.py` — Sets custom USB product name ("Copilot Command Ring") and enables `usb_cdc.data` for host communication.
-- `code.py` — Main firmware with state machine and animations.
+- `code.py` — Main firmware with state machine and animations. It also caps the serial input buffer and runs periodic garbage collection to reduce long-session memory pressure on small boards such as the Pico.
 
 ## Pin configuration
 

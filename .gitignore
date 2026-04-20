@@ -19,6 +19,7 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Test / lint caches
 .pytest_cache/

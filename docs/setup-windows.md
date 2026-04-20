@@ -96,7 +96,7 @@ If you don't set a port, the host bridge will try to auto-detect your board by s
    - Copy `firmware/circuitpython/boot.py` to `CIRCUITPY/boot.py`
    - Copy `firmware/circuitpython/code.py` to `CIRCUITPY/code.py`
    - Copy `firmware/circuitpython/lib/` contents to `CIRCUITPY/lib/`
-6. The board reboots automatically. The ring should briefly flash on startup.
+6. The board reboots automatically. The ring should show a purple wipe animation on startup, confirming the firmware is running.
 
 > **Note:** After copying `boot.py`, you must **unplug and replug** the board so the USB CDC data channel activates and the device appears as "Copilot Command Ring" in Device Manager. The COM port number may change.
 
@@ -149,3 +149,4 @@ If the ring doesn't respond, check:
 | `COPILOT_RING_BRIGHTNESS` | LED brightness (0.0–1.0) | `0.04` |
 | `COPILOT_RING_LOG_LEVEL` | Log verbosity | `DEBUG` |
 | `COPILOT_RING_DRY_RUN` | Skip serial send | `1` |
+| `COPILOT_RING_LOCK_TIMEOUT` | Multi-session serial lock wait (seconds) | `1.0` |

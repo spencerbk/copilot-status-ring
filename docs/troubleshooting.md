@@ -151,6 +151,29 @@ export COPILOT_RING_BRIGHTNESS=0.15
 
 ---
 
+## Ring becomes unresponsive after long sessions
+
+If the Pico or other CircuitPython board stops responding and only recovers after a reset, update to the latest `firmware/circuitpython/code.py`.
+
+Recent firmware versions include two safeguards for long-running sessions:
+
+- A capped serial input buffer so malformed or partial JSON without a newline cannot grow forever in RAM
+- Periodic `gc.collect()` calls to reduce memory pressure from repeated JSON parsing
+
+**If you may be running older firmware:**
+
+1. Copy the latest `firmware/circuitpython/code.py` to the `CIRCUITPY` drive.
+2. Reset or power-cycle the board.
+3. Re-test with a normal Copilot CLI session.
+
+**If it still happens:**
+
+- Open the CircuitPython console port and look for a `MemoryError` traceback.
+- Check that `neopixel.mpy` matches your installed CircuitPython version.
+- If you changed the firmware, confirm there are no extra debug prints or large buffers added to `code.py`.
+
+---
+
 ## Animations look wrong
 
 LEDs are lighting up but the patterns are incorrect.
@@ -267,6 +290,39 @@ This shows all serial ports with their descriptions, which can help you identify
   }
 }
 ```
+
+---
+
+## Multiple Copilot CLI sessions
+
+If you run Copilot CLI in multiple terminals (or across different repos) on the same machine, all sessions share the same ring.
+
+**How it works:**
+
+The host bridge uses a system-wide file lock so that concurrent hook processes never corrupt each other's serial writes. Each write acquires the lock, sends one JSON line, and releases it — the lock is held for only a few milliseconds.
+
+The ring shows a **"last writer wins"** blended view: whichever session sent the most recent event determines the current animation. This means the ring may rapidly switch between states if two sessions are actively working.
+
+**What to expect:**
+
+- ✅ No crashes, corrupted writes, or silent failures.
+- ✅ Each session's events reach the ring intact.
+- ⚠️ The ring cannot display two sessions simultaneously — it shows the most recent event from any session.
+- ⚠️ A `sessionEnd` from one session will turn the ring off even if another session is still active.
+
+**If the ring seems stuck or unresponsive during multi-session use:**
+
+1. Enable debug logging in one session to see what events are being sent:
+   ```bash
+   export COPILOT_RING_LOG_LEVEL=DEBUG
+   ```
+2. Check that the lock is not stale. The lock file is at:
+   - **Windows:** `%TEMP%\copilot-command-ring.lock`
+   - **macOS / Linux:** `/tmp/copilot-command-ring.lock`
+
+   Deleting this file is safe — a new lock is created on the next write.
+
+> **Future:** Full session-aware multiplexing (where the ring tracks all active sessions and shows priority-based state) is planned for the daemon mode in v3. See [`ROADMAP.md`](../ROADMAP.md).
 
 ---
 

@@ -11,30 +11,17 @@ All v1 deliverables are complete.
 | **Serial protocol** | ✅ Done | Line-delimited JSON over USB serial, shared by both firmware targets |
 | **CircuitPython firmware** | ✅ Done | State machine with 8 animation modes on 24-pixel NeoPixel ring (CircuitPython 10.x) |
 | **Arduino firmware** | ✅ Done | Semantically equivalent animations using Adafruit_NeoPixel |
-| **Host tests** | ✅ Done | 99 tests (unit + integration) covering event normalization, protocol, config, port detection |
+| **Host tests** | ✅ Done | Unit + integration coverage for event normalization, protocol, config, and port detection |
 | **Documentation** | ✅ Done | Hardware wiring guide, OS setup docs (Windows/macOS/Linux), troubleshooting, hook event reference |
 | **Cross-platform support** | ✅ Done | Windows (primary), macOS, Linux |
 
 ### v1 hook events
 
-`sessionStart` · `sessionEnd` · `userPromptSubmitted` · `preToolUse` · `postToolUse` · `postToolUseFailure` · `permissionRequest` · `subagentStart` · `subagentStop` · `agentStop` · `preCompact` · `errorOccurred`
+`sessionStart` · `sessionEnd` · `userPromptSubmitted` · `preToolUse` · `postToolUse` · `postToolUseFailure` · `permissionRequest` · `subagentStart` · `subagentStop` · `agentStop` · `preCompact` · `errorOccurred` · `notification`
 
 ### v1 animations
 
 off · solid · flash · blink · spinner · wipe · chase · breathing
-
----
-
-## v1.1 — Notification Event
-
-Add support for the `notification` hook event, which was deferred from v1.
-
-| Item | Description |
-|------|-------------|
-| Host normalization | Extract `notification_type` and `message` from `notification` payloads |
-| CircuitPython animation | Optional overlay animation for notifications |
-| Arduino animation | Matching overlay animation |
-| Protocol message | `{"event":"notification","state":"notify","notification_type":"..."}` |
 
 ---
 
