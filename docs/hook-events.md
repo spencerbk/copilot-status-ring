@@ -39,7 +39,7 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `preCompact` | `compacting` | Wipe | Cyan | — |
 | `errorOccurred` | `error` | Flash (long) | Red | `error`, `recoverable` |
 | `sessionEnd` | `off` | Off | — | `reason` |
-| `notification` | `notify` | Overlay *(v1.1)* | — | `notification_type`, `message` |
+| `notification` | `notify` | Flash | White | `notification_type`, `message` |
 
 ---
 
@@ -133,8 +133,8 @@ These are the exact JSON Lines the host bridge sends over serial. Each is a sing
 | `reason` | string | Reason for state change |
 | `error` | string | Error description |
 | `recoverable` | boolean | Whether the error is recoverable |
-| `notification_type` | string | Type of notification (v1.1) |
-| `message` | string | Notification message (v1.1) |
+| `notification_type` | string | Type of notification |
+| `message` | string | Notification message |
 | `sessionId` | string | Session identifier |
 | `timestamp` | string | ISO 8601 timestamp |
 

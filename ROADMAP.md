@@ -17,24 +17,11 @@ All v1 deliverables are complete.
 
 ### v1 hook events
 
-`sessionStart` · `sessionEnd` · `userPromptSubmitted` · `preToolUse` · `postToolUse` · `postToolUseFailure` · `permissionRequest` · `subagentStart` · `subagentStop` · `agentStop` · `preCompact` · `errorOccurred`
+`sessionStart` · `sessionEnd` · `userPromptSubmitted` · `preToolUse` · `postToolUse` · `postToolUseFailure` · `permissionRequest` · `subagentStart` · `subagentStop` · `agentStop` · `preCompact` · `errorOccurred` · `notification`
 
 ### v1 animations
 
 off · solid · flash · blink · spinner · wipe · chase · breathing
-
----
-
-## v1.1 — Notification Event
-
-Add support for the `notification` hook event, which was deferred from v1.
-
-| Item | Description |
-|------|-------------|
-| Host normalization | Extract `notification_type` and `message` from `notification` payloads |
-| CircuitPython animation | Optional overlay animation for notifications |
-| Arduino animation | Matching overlay animation |
-| Protocol message | `{"event":"notification","state":"notify","notification_type":"..."}` |
 
 ---
 
