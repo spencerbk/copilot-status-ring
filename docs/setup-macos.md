@@ -78,13 +78,13 @@ Create `.copilot-command-ring.local.json` in your project root:
 ```json
 {
   "serial_port": "/dev/cu.usbmodem14201",
-  "brightness": 0.08
+  "brightness": 0.04
 }
 ```
 
 **Option C — auto-detect:**
 
-If you don't set a port, the host bridge will try to auto-detect your board by scanning serial devices.
+If you don't set a port, the host bridge will try to auto-detect your board by scanning for serial devices with descriptions containing "Copilot Command Ring", "CircuitPython", "Arduino", or "USB Serial".
 
 ---
 
@@ -112,7 +112,7 @@ macOS may require granting your terminal app permission to access USB devices:
    ```
 6. The board reboots automatically.
 
-> **Note:** After copying `boot.py`, unplug and replug the board so the USB CDC data channel activates.
+> **Note:** After copying `boot.py`, unplug and replug the board so the USB CDC data channel activates and the device appears as "Copilot Command Ring". The device path may change.
 
 ---
 
@@ -160,6 +160,6 @@ export COPILOT_RING_LOG_LEVEL=DEBUG
 |----------|-------------|---------|
 | `COPILOT_RING_PORT` | Serial port | `/dev/cu.usbmodem14201` |
 | `COPILOT_RING_BAUD` | Baud rate (Arduino only) | `115200` |
-| `COPILOT_RING_BRIGHTNESS` | LED brightness (0.0–1.0) | `0.08` |
+| `COPILOT_RING_BRIGHTNESS` | LED brightness (0.0–1.0) | `0.04` |
 | `COPILOT_RING_LOG_LEVEL` | Log verbosity | `DEBUG` |
 | `COPILOT_RING_DRY_RUN` | Skip serial send | `1` |

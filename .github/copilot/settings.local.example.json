@@ -4,6 +4,6 @@
   "copilot-command-ring": {
     "serial_port": "COM7",
     "baud": 115200,
-    "brightness": 0.08
+    "brightness": 0.04
   }
 }

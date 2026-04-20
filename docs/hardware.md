@@ -95,7 +95,7 @@ For Arduino, edit `NEOPIXEL_PIN` in the `.ino` sketch:
 | Connection | Recommended gauge | Notes |
 |------------|-------------------|-------|
 | **Data (MCU data pin → Ring DIN)** | 22–26 AWG | Low current signal line; e.g. GP6 on Pico, D6 on Feather/XIAO ESP32 |
-| **Power (5V → Ring 5V)** | 22–24 AWG | Adequate for the ring at low brightness (6–10%) |
+| **Power (5V → Ring 5V)** | 22–24 AWG | Adequate for the ring at low brightness (4–10%) |
 | **Ground (GND → Ring GND)** | 22–24 AWG | Match the power wire gauge |
 
 Standard breadboard jumper wires and Dupont wires (typically 22–24 AWG) are fine for prototyping. For a permanent soldered build, 22 AWG solid-core is a good all-around choice.
@@ -106,7 +106,7 @@ Standard breadboard jumper wires and Dupont wires (typically 22–24 AWG) are fi
 
 ## Power notes
 
-The NeoPixel Ring 24 can draw up to **~1.4 A at full white, full brightness** (24 pixels × ~60 mA each). In practice, the Copilot Command Ring runs at very low brightness (6–10%), so current draw is much lower.
+The NeoPixel Ring 24 can draw up to **~1.4 A at full white, full brightness** (24 pixels × ~60 mA each). In practice, the Copilot Command Ring runs at very low brightness (4–10%), so current draw is much lower.
 
 **Rules of thumb:**
 

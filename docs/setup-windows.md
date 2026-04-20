@@ -76,13 +76,13 @@ Create `.copilot-command-ring.local.json` in your project root:
 ```json
 {
   "serial_port": "COM7",
-  "brightness": 0.08
+  "brightness": 0.04
 }
 ```
 
 **Option C — auto-detect:**
 
-If you don't set a port, the host bridge will try to auto-detect your board by scanning for serial devices with descriptions containing "CircuitPython", "Arduino", or "USB Serial".
+If you don't set a port, the host bridge will try to auto-detect your board by scanning for serial devices with descriptions containing "Copilot Command Ring", "CircuitPython", "Arduino", or "USB Serial".
 
 ---
 
@@ -98,7 +98,7 @@ If you don't set a port, the host bridge will try to auto-detect your board by s
    - Copy `firmware/circuitpython/lib/` contents to `CIRCUITPY/lib/`
 6. The board reboots automatically. The ring should briefly flash on startup.
 
-> **Note:** After copying `boot.py`, you may need to **unplug and replug** the board for the USB CDC data channel to activate.
+> **Note:** After copying `boot.py`, you must **unplug and replug** the board so the USB CDC data channel activates and the device appears as "Copilot Command Ring" in Device Manager. The COM port number may change.
 
 ---
 
@@ -146,6 +146,6 @@ If the ring doesn't respond, check:
 |----------|-------------|---------|
 | `COPILOT_RING_PORT` | Serial port | `COM7` |
 | `COPILOT_RING_BAUD` | Baud rate (Arduino only) | `115200` |
-| `COPILOT_RING_BRIGHTNESS` | LED brightness (0.0–1.0) | `0.08` |
+| `COPILOT_RING_BRIGHTNESS` | LED brightness (0.0–1.0) | `0.04` |
 | `COPILOT_RING_LOG_LEVEL` | Log verbosity | `DEBUG` |
 | `COPILOT_RING_DRY_RUN` | Skip serial send | `1` |

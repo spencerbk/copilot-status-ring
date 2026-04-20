@@ -16,6 +16,24 @@
 #endif
 
 // ---------------------------------------------------------------------------
+// USB identification
+// Sets the USB product name so the host bridge can auto-detect the device.
+// Platform-specific — uncomment the section that matches your board.
+// ---------------------------------------------------------------------------
+
+// Adafruit boards with TinyUSB (SAMD, nRF, RP2040 Adafruit core):
+// #include "Adafruit_TinyUSB.h"
+// — then in setup(): TinyUSBDevice.setProductDescriptor("Copilot Command Ring");
+
+// RP2040 (Earle Philhower core):
+// Add to Arduino IDE build flags: -DUSB_PRODUCT="Copilot Command Ring"
+// Or set via Tools > USB Stack > Adafruit TinyUSB and use the TinyUSB approach above.
+
+// ESP32-S2/S3:
+// #include "USB.h"
+// — then in setup(): USB.productName("Copilot Command Ring");
+
+// ---------------------------------------------------------------------------
 // Configuration
 // Data pin — change to match your board:
 //   Arduino Uno/Nano, Pico, XIAO ESP32-C6: 6 (default)
@@ -24,7 +42,7 @@
 
 #define NEOPIXEL_PIN    6
 #define PIXEL_COUNT     24
-#define BRIGHTNESS      20    // 0-255, ~8%
+#define BRIGHTNESS      10    // 0-255, ~4%
 #define SERIAL_BAUD     115200
 #define SERIAL_BUF_SIZE 256
 
@@ -54,7 +72,7 @@ enum State {
 
 static const uint32_t COL_SESSION_START = Adafruit_NeoPixel::Color(60, 60, 50);
 static const uint32_t COL_PROMPT       = Adafruit_NeoPixel::Color(0, 80, 200);
-static const uint32_t COL_WORKING      = Adafruit_NeoPixel::Color(200, 120, 0);
+static const uint32_t COL_WORKING      = Adafruit_NeoPixel::Color(163, 113, 247);
 static const uint32_t COL_TOOL_OK      = Adafruit_NeoPixel::Color(0, 200, 0);
 static const uint32_t COL_TOOL_ERROR   = Adafruit_NeoPixel::Color(200, 0, 0);
 static const uint32_t COL_PERMISSION   = Adafruit_NeoPixel::Color(200, 200, 0);

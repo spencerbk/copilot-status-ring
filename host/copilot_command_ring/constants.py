@@ -31,7 +31,7 @@ EVENT_STATE_MAP: Final[dict[str, str]] = {
     "preToolUse": STATE_WORKING,
     "postToolUse": STATE_TOOL_OK,
     "postToolUseFailure": STATE_TOOL_ERROR,
-    "permissionRequest": STATE_AWAITING_PERMISSION,
+    "permissionRequest": STATE_WORKING,
     "subagentStart": STATE_SUBAGENT_ACTIVE,
     "subagentStop": STATE_IDLE,
     "agentStop": STATE_AGENT_IDLE,
@@ -44,7 +44,7 @@ EVENT_STATE_MAP: Final[dict[str, str]] = {
 # Default values
 # ---------------------------------------------------------------------------
 DEFAULT_BAUD: Final[int] = 115200
-DEFAULT_BRIGHTNESS: Final[float] = 0.08
+DEFAULT_BRIGHTNESS: Final[float] = 0.04
 DEFAULT_SERIAL_OPEN_TIMEOUT: Final[float] = 0.3
 DEFAULT_SERIAL_WRITE_TIMEOUT: Final[float] = 0.3
 DEFAULT_IDLE_MODE: Final[str] = "off"
@@ -68,6 +68,7 @@ CONFIG_FILE_NAME: Final[str] = ".copilot-command-ring.local.json"
 # Device detection defaults
 # ---------------------------------------------------------------------------
 DEFAULT_DESCRIPTION_CONTAINS: Final[list[str]] = [
+    "Copilot Command Ring",
     "CircuitPython",
     "Arduino",
     "USB Serial",
