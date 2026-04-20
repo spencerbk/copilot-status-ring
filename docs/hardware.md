@@ -10,32 +10,39 @@ This guide covers wiring, parts, and power for the Copilot Command Ring.
 |------|-------------|-------|
 | **Adafruit NeoPixel Ring 24** | 24 × WS2812B RGB LEDs ([product 1586](https://www.adafruit.com/product/1586)) | The ring this project is designed for |
 | **USB microcontroller** | RP2040, ESP32-S2/S3, or similar | Must support CircuitPython and/or Arduino |
-| **330 Ω resistor** (300–500 Ω) | In series with the NeoPixel data line | Prevents signal reflections; place close to ring DIN |
+| **330 Ω resistor** (300–500 Ω) *(optional)* | In series with the NeoPixel data line | Recommended for permanent builds; safe to skip for short-wire prototyping |
 | **1000 µF capacitor** (500–1000 µF) | Across 5V and GND near the ring | Protects LEDs against power-on inrush current |
 | **74AHCT125 level shifter** *(optional)* | Shifts 3.3V data to 5V logic | Recommended for reliable signaling; see [Level shifting](#level-shifting) |
 | **USB data cable** | Must be a **data** cable, not charge-only | Used for serial communication with the host |
-| **Hookup wire / jumpers** | For connections between MCU, ring, and power | Solid-core or silicone-stranded |
+| **Hookup wire / jumpers** | For connections between MCU, ring, and power | 22–24 AWG; breadboard jumpers or Dupont wires work for prototyping |
 
 ---
 
 ## Wiring diagram
 
+The MCU plugs into your computer via USB and provides both power and data to the ring. Three wires run from the MCU to the NeoPixel ring:
+
 ```
-MCU D6 ──[330Ω]──> Ring DIN
-5V Power ──────────> Ring 5V
-GND ─────────────── Ring GND ─── MCU GND
-             ┌─[1000µF]─┐
-             5V        GND
+         USB cable
+Computer ════════════ MCU
+                       ├─ D6  ──[330Ω*]──▶ Ring DIN
+                       ├─ 5V  ───────────▶ Ring 5V
+                       └─ GND ───────────▶ Ring GND
+                                    ┌─[1000µF]─┐
+                                   5V         GND
+                                   (at the ring)
 ```
 
 **Connections summary:**
 
-1. **Data:** MCU data pin (e.g. D6) → 330 Ω resistor → Ring DIN
-2. **Power:** 5V supply → Ring 5V
-3. **Ground:** Ring GND, MCU GND, and power supply GND must all share a common ground
-4. **Capacitor:** 1000 µF electrolytic across the 5V and GND rails, as close to the ring as possible
+1. **Data:** MCU data pin (e.g. D6) → Ring DIN (optionally through a 330 Ω resistor)
+2. **Power:** MCU 5V (VBUS) → Ring 5V
+3. **Ground:** MCU GND → Ring GND
+4. **Capacitor:** 1000 µF electrolytic across Ring 5V and Ring GND, as close to the ring as possible
 
-> **Tip:** The resistor goes on the data line, the capacitor goes on the power rail. Don't mix them up.
+> **\*** The 330 Ω resistor is optional for prototyping with short wires (< 15 cm). It protects the first LED against signal reflections and voltage spikes. Adafruit recommends it for permanent builds or longer wire runs.
+>
+> **Note:** For high-brightness or external power setups, see [Power notes](#power-notes).
 
 ---
 
@@ -83,6 +90,20 @@ For Arduino, edit `NEOPIXEL_PIN` in the `.ino` sketch:
 
 ---
 
+## Wire gauge
+
+| Connection | Recommended gauge | Notes |
+|------------|-------------------|-------|
+| **Data (D6 → Ring DIN)** | 22–26 AWG | Low current signal line; any standard hookup wire works |
+| **Power (5V → Ring 5V)** | 22–24 AWG | Adequate for the ring at low brightness (6–10%) |
+| **Ground (GND → Ring GND)** | 22–24 AWG | Match the power wire gauge |
+
+Standard breadboard jumper wires and Dupont wires (typically 22–24 AWG) are fine for prototyping. For a permanent soldered build, 22 AWG solid-core is a good all-around choice.
+
+> **Note:** Wire gauge matters more at high brightness or long runs (> 30 cm), where voltage drop on thinner wires can cause color issues on far-end LEDs. For those cases, use 20 AWG or heavier on the power and ground lines.
+
+---
+
 ## Power notes
 
 The NeoPixel Ring 24 can draw up to **~1.4 A at full white, full brightness** (24 pixels × ~60 mA each). In practice, the Copilot Command Ring runs at very low brightness (6–10%), so current draw is much lower.
@@ -112,11 +133,11 @@ NeoPixels expect a **5V logic level** on the data line. Most modern MCUs (RP2040
 **Wiring with level shifter:**
 
 ```
-MCU D6 ──> 74AHCT125 Input (1A)
-           74AHCT125 Output (1Y) ──[330Ω]──> Ring DIN
-           74AHCT125 VCC ──> 5V
-           74AHCT125 GND ──> GND
-           74AHCT125 OE (1OE) ──> GND (always enabled)
+MCU D6  ──────────▶ 74AHCT125 Input (1A)
+                    74AHCT125 Output (1Y) ──[330Ω]──▶ Ring DIN
+MCU 5V  ──────────▶ 74AHCT125 VCC ──────────────────▶ Ring 5V
+MCU GND ──────────▶ 74AHCT125 GND ──────────────────▶ Ring GND
+                    74AHCT125 OE (1OE) ──▶ GND (always enabled)
 ```
 
 If you're using short wires (< 10 cm) and low pixel counts, you can skip the level shifter for prototyping. Add it if you see signal issues.
@@ -127,7 +148,7 @@ If you're using short wires (< 10 cm) and low pixel counts, you can skip the lev
 
 1. **Connect GND first.** When wiring or plugging in, always connect the ground wire before power or data. Disconnect in reverse order.
 2. **The capacitor protects against inrush current.** The 1000 µF capacitor absorbs the initial surge when power is applied. Without it, you risk damaging the first LED in the chain.
-3. **The resistor protects the data line.** The 330 Ω resistor prevents signal reflections and voltage spikes from reaching the first LED's data input.
+3. **The resistor protects the data line.** The 330 Ω resistor prevents signal reflections and voltage spikes from reaching the first LED's data input. It's optional for short-wire prototyping but recommended for permanent builds.
 4. **Don't exceed the MCU's current capacity.** If the ring is drawing more than ~500 mA, use an external power supply.
 5. **Check capacitor polarity.** Electrolytic capacitors are polarized — the longer leg (or the side without the stripe) goes to 5V, the shorter leg (striped side) goes to GND.
 6. **Use a data-capable USB cable.** Charge-only cables lack the D+/D− wires needed for serial communication. If your board shows up as a drive but not a serial port, try a different cable.
