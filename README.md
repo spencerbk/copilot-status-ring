@@ -50,10 +50,20 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 
 ### 1. Clone and install
 
+**macOS / Linux:**
+
 ```bash
 git clone https://github.com/spencerbk/copilot-status-ring.git
 cd copilot-status-ring
-pip install -r requirements.txt
+pip3 install -r requirements.txt
+```
+
+**Windows (PowerShell):**
+
+```powershell
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+py -3 -m pip install -r requirements.txt
 ```
 
 ### 2. Flash firmware
@@ -74,14 +84,30 @@ pip install -r requirements.txt
 
 Copy the example config and set your port:
 
+**macOS / Linux:**
+
 ```bash
 cp .copilot-command-ring.local.json.example .copilot-command-ring.local.json
 ```
 
+**Windows (PowerShell):**
+
+```powershell
+Copy-Item .copilot-command-ring.local.json.example .copilot-command-ring.local.json
+```
+
 Edit `.copilot-command-ring.local.json` and set `serial_port` to your board's port (e.g., `COM7` on Windows, `/dev/ttyACM0` on Linux). Or set the environment variable:
 
+**macOS / Linux:**
+
 ```bash
-export COPILOT_RING_PORT=COM7
+export COPILOT_RING_PORT=/dev/ttyACM0
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$env:COPILOT_RING_PORT = "COM7"
 ```
 
 ### 4. Use with Copilot CLI
@@ -101,6 +127,7 @@ Configuration is resolved in this order: **environment variable > config file > 
 | `COPILOT_RING_BRIGHTNESS` | `0.04` | LED brightness (`0.0`–`1.0`) |
 | `COPILOT_RING_LOG_LEVEL` | `WARNING` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `COPILOT_RING_DRY_RUN` | `false` | If `true`, log messages to stderr instead of sending to serial |
+| `COPILOT_RING_LOCK_TIMEOUT` | `1.0` | Seconds to wait for the multi-session serial lock before skipping the send |
 
 ### Config File
 
@@ -111,6 +138,7 @@ Create `.copilot-command-ring.local.json` in the repo root (git-ignored):
   "serial_port": "COM7",
   "baud": 115200,
   "brightness": 0.04,
+  "lock_timeout": 1.0,
   "idle_mode": "off",
   "device_match": {
     "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial"]
@@ -132,11 +160,12 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 | `postToolUse` | `tool_ok` | flash | green |
 | `postToolUseFailure` | `tool_error` | flash | red |
 | `permissionRequest` | `working` | spinner | purple |
-| `subagentStart` | `subagent_active` | chase | purple |
+| `subagentStart` | `subagent_active` | chase | magenta |
 | `subagentStop` | `idle` | off | — |
 | `agentStop` | `agent_idle` | breathing | dim white |
 | `preCompact` | `compacting` | wipe | cyan |
 | `errorOccurred` | `error` | flash | red |
+| `notification` | `notify` | flash | white |
 | `sessionEnd` | `off` | off | — |
 
 The serial protocol uses JSON Lines — one JSON object per line over USB serial. See [`docs/hook-events.md`](docs/hook-events.md) for the full protocol specification.
@@ -166,27 +195,76 @@ copilot-status-ring/
 
 ### Install dev dependencies
 
+**macOS / Linux:**
+
 ```bash
-pip install -r requirements.txt
-pip install ".[dev]"
+pip3 install -r requirements.txt
+pip3 install ".[dev]"
+```
+
+**Windows (PowerShell):**
+
+```powershell
+py -3 -m pip install -r requirements.txt
+py -3 -m pip install ".[dev]"
 ```
 
 ### Run tests
 
+**macOS / Linux:**
+
 ```bash
-pytest tests/ -v
+python3 -m pytest tests/ -v
+```
+
+**Windows (PowerShell):**
+
+```powershell
+py -3 -m pytest tests/ -v
 ```
 
 ### Lint and type-check
 
+**macOS / Linux:**
+
 ```bash
-python -m ruff check host/ tests/
+python3 -m ruff check host/ tests/
+```
+
+**Windows (PowerShell):**
+
+```powershell
+py -3 -m ruff check host/ tests/
 ```
 
 ### Simulate hook events (no hardware needed)
 
+**macOS / Linux:**
+
 ```bash
-python -m copilot_command_ring.simulate --dry-run
+python3 -m copilot_command_ring.simulate --dry-run
+```
+
+**Windows (PowerShell):**
+
+```powershell
+py -3 -m copilot_command_ring.simulate --dry-run
+```
+
+### Validate platform setup
+
+Run the platform validation script to check that your environment is correctly configured:
+
+**macOS / Linux:**
+
+```bash
+bash scripts/validate-platform.sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+.\scripts\validate-platform.ps1
 ```
 
 ## Troubleshooting
@@ -198,6 +276,7 @@ Quick checks:
 - **Ring not responding?** Verify the serial port with `COPILOT_RING_LOG_LEVEL=DEBUG` and check the connection.
 - **No hooks firing?** Ensure you are running Copilot CLI from within this repository — hooks load from `.github/hooks/`.
 - **Permission errors on serial port?** On Linux, add your user to the `dialout` group. On macOS, check `/dev/tty.*` permissions.
+- **Multiple sessions?** Concurrent Copilot CLI sessions on the same machine are safe — a file lock prevents serial corruption. The ring shows a blended "last writer wins" view.
 
 See also: [`docs/setup-windows.md`](docs/setup-windows.md) · [`docs/setup-macos.md`](docs/setup-macos.md) · [`docs/setup-linux.md`](docs/setup-linux.md)
 

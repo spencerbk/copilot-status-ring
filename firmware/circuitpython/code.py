@@ -6,13 +6,14 @@ State-machine-driven NeoPixel ring controller. Receives JSON Lines commands
 over USB serial (usb_cdc.data) and renders animations on a 24-pixel ring.
 """
 
+import gc
 import json
 import math
 import time
 
-import board
-import neopixel
-import usb_cdc
+import board  # type: ignore[reportMissingImports]
+import neopixel  # type: ignore[reportMissingImports]
+import usb_cdc  # type: ignore[reportMissingImports]
 
 # ── Configuration ──────────────────────────────────────────────────────────
 # Data pin for the NeoPixel ring — change to match your board:
@@ -26,19 +27,20 @@ BRIGHTNESS_BOOST = 0.02  # extra brightness for dim states (breathing)
 PIXEL_ORDER = neopixel.GRB
 SPINNER_WIDTH = 6  # number of LEDs in the spinner segment
 LOOP_DELAY = 0.02  # ~50 fps
+SERIAL_BUF_MAX = 512  # discard buffer if no newline within this many bytes
 
 # ── Color palette ──────────────────────────────────────────────────────────
 COLOR_OFF = (0, 0, 0)
 COLOR_SESSION_START = (60, 60, 50)     # warm white
-COLOR_PROMPT = (0, 80, 200)            # blue
-COLOR_WORKING = (163, 113, 247)          # copilot purple (#A371F7)
-COLOR_TOOL_OK = (0, 200, 0)            # green
-COLOR_TOOL_ERROR = (200, 0, 0)         # red
-COLOR_PERMISSION = (200, 200, 0)       # yellow
-COLOR_SUBAGENT = (140, 0, 200)         # purple
+COLOR_PROMPT = (0, 152, 255)           # copilot blue (#0098FF)
+COLOR_WORKING = (133, 52, 243)         # copilot purple (#8534F3)
+COLOR_TOOL_OK = (15, 191, 62)          # github green (#0FBF3E)
+COLOR_TOOL_ERROR = (218, 54, 51)       # primer danger (#DA3633)
+COLOR_PERMISSION = (210, 153, 34)      # primer attention (#D29922)
+COLOR_SUBAGENT = (200, 0, 160)         # magenta — distinct from working purple
 COLOR_IDLE_DIM = (40, 40, 35)          # dim white
 COLOR_COMPACTING = (0, 180, 180)       # cyan
-COLOR_ERROR = (200, 0, 0)              # red
+COLOR_ERROR = (218, 54, 51)            # primer danger (#DA3633)
 COLOR_NOTIFY = (200, 200, 200)         # white
 
 # State → (animation_function_name, color, kwargs)
@@ -47,7 +49,11 @@ STATE_MAP = {
     "idle":                ("off",       COLOR_OFF,           {}),
     "session_start":       ("wipe",      COLOR_SESSION_START, {"duration": 0.8}),
     "prompt_submitted":    ("wipe",      COLOR_PROMPT,        {"duration": 0.8}),
-    "working":             ("spinner",   COLOR_WORKING,       {"width": SPINNER_WIDTH, "period": 1.0}),
+    "working":             (
+        "spinner",
+        COLOR_WORKING,
+        {"width": SPINNER_WIDTH, "period": 1.0},
+    ),
     "tool_ok":             ("flash",     COLOR_TOOL_OK,       {"duration": 0.3}),
     "tool_error":          ("flash",     COLOR_TOOL_ERROR,    {"duration": 0.3}),
     "awaiting_permission": ("blink",     COLOR_PERMISSION,    {"period": 0.6}),
@@ -113,7 +119,7 @@ class StatusRing:
         elif anim_name == "blink":
             self._anim_blink(color, elapsed, kwargs.get("period", 0.6))
         elif anim_name == "spinner":
-            self._anim_spinner(color, elapsed, kwargs.get("width", 3),
+            self._anim_spinner(color, elapsed, kwargs.get("width", SPINNER_WIDTH),
                                kwargs.get("period", 1.0))
         elif anim_name == "wipe":
             self._anim_wipe(color, elapsed, kwargs.get("duration", 0.8))
@@ -232,6 +238,9 @@ def read_serial():
 
     newline = _serial_buf.find("\n")
     if newline < 0:
+        # Prevent unbounded buffer growth from malformed data
+        if len(_serial_buf) > SERIAL_BUF_MAX:
+            _serial_buf = ""
         return None
 
     line = _serial_buf[:newline].strip()
@@ -248,10 +257,18 @@ pixels = neopixel.NeoPixel(
     auto_write=False,
     pixel_order=PIXEL_ORDER,
 )
+
+# ── Startup animation — quick wipe to confirm the ring is alive ────────
+for i in range(NUM_PIXELS):
+    pixels[i] = COLOR_WORKING  # Copilot purple
+    pixels.show()
+    time.sleep(0.02)
+time.sleep(0.3)
 pixels.fill(COLOR_OFF)
 pixels.show()
 
 ring = StatusRing(pixels, NUM_PIXELS)
+_gc_counter = 0
 
 # ── Main loop ──────────────────────────────────────────────────────────────
 
@@ -266,4 +283,11 @@ while True:
             pass  # discard malformed JSON
 
     ring.tick(time.monotonic())
+
+    # Periodic GC to reclaim memory from parsed JSON dicts
+    _gc_counter += 1
+    if _gc_counter >= 50:  # ~once per second at 50 fps
+        gc.collect()
+        _gc_counter = 0
+
     time.sleep(LOOP_DELAY)

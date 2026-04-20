@@ -13,10 +13,12 @@ from copilot_command_ring.constants import (
     DEFAULT_BRIGHTNESS,
     DEFAULT_DESCRIPTION_CONTAINS,
     DEFAULT_IDLE_MODE,
+    DEFAULT_LOCK_TIMEOUT,
     DEFAULT_PIXEL_COUNT,
     ENV_BAUD,
     ENV_BRIGHTNESS,
     ENV_DRY_RUN,
+    ENV_LOCK_TIMEOUT,
     ENV_PORT,
 )
 
@@ -51,6 +53,11 @@ def test_default_config_serial_port_is_none():
 def test_default_config_dry_run_is_false():
     cfg = Config()
     assert cfg.dry_run is False
+
+
+def test_default_config_lock_timeout():
+    cfg = Config()
+    assert cfg.lock_timeout == DEFAULT_LOCK_TIMEOUT
 
 
 def test_default_config_device_match_descriptions():
@@ -92,6 +99,14 @@ def test_config_file_overrides_idle_mode(tmp_path, monkeypatch):
     config_file.write_text(json.dumps({"idle_mode": "breathe"}), encoding="utf-8")
     cfg = load_config(config_dir=tmp_path)
     assert cfg.idle_mode == "breathe"
+
+
+def test_config_file_overrides_lock_timeout(tmp_path, monkeypatch):
+    monkeypatch.delenv(ENV_LOCK_TIMEOUT, raising=False)
+    config_file = tmp_path / ".copilot-command-ring.local.json"
+    config_file.write_text(json.dumps({"lock_timeout": 2.5}), encoding="utf-8")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.lock_timeout == pytest.approx(2.5)
 
 
 def test_config_file_overrides_pixel_count(tmp_path, monkeypatch):
@@ -138,6 +153,14 @@ def test_env_brightness_overrides_file(tmp_path, monkeypatch):
     assert cfg.brightness == pytest.approx(0.75)
 
 
+def test_env_lock_timeout_overrides_file(tmp_path, monkeypatch):
+    config_file = tmp_path / ".copilot-command-ring.local.json"
+    config_file.write_text(json.dumps({"lock_timeout": 1.0}), encoding="utf-8")
+    monkeypatch.setenv(ENV_LOCK_TIMEOUT, "3.25")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.lock_timeout == pytest.approx(3.25)
+
+
 # ── Invalid env values are ignored ───────────────────────────────────────
 
 
@@ -153,6 +176,26 @@ def test_invalid_env_brightness_is_ignored(tmp_path, monkeypatch):
     monkeypatch.setenv(ENV_BRIGHTNESS, "bright")
     cfg = load_config(config_dir=tmp_path)
     assert cfg.brightness == DEFAULT_BRIGHTNESS
+
+
+def test_invalid_env_lock_timeout_is_ignored(tmp_path, monkeypatch):
+    monkeypatch.setenv(ENV_LOCK_TIMEOUT, "slow")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.lock_timeout == DEFAULT_LOCK_TIMEOUT
+
+
+def test_negative_config_file_lock_timeout_is_ignored(tmp_path, monkeypatch):
+    monkeypatch.delenv(ENV_LOCK_TIMEOUT, raising=False)
+    config_file = tmp_path / ".copilot-command-ring.local.json"
+    config_file.write_text(json.dumps({"lock_timeout": -1}), encoding="utf-8")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.lock_timeout == DEFAULT_LOCK_TIMEOUT
+
+
+def test_negative_env_lock_timeout_is_ignored(tmp_path, monkeypatch):
+    monkeypatch.setenv(ENV_LOCK_TIMEOUT, "-1")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.lock_timeout == DEFAULT_LOCK_TIMEOUT
 
 
 # ── Missing config file handled gracefully ────────────────────────────────

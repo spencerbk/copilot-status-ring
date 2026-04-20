@@ -36,6 +36,9 @@
     ],
     "errorOccurred": [
       { "type": "command", "powershell": ".github/hooks/run-hook.ps1 errorOccurred", "bash": ".github/hooks/run-hook.sh errorOccurred" }
+    ],
+    "notification": [
+      { "type": "command", "powershell": ".github/hooks/run-hook.ps1 notification", "bash": ".github/hooks/run-hook.sh notification" }
     ]
   }
 }
