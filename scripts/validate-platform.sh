@@ -76,10 +76,14 @@ fi
 HOOK_JSON="$REPO_ROOT/.github/hooks/copilot-command-ring.json"
 if [ -f "$HOOK_JSON" ]; then
     pass "copilot-command-ring.json exists"
-    if $PYTHON -c "import json, sys; json.load(open(sys.argv[1]))" "$HOOK_JSON" 2>/dev/null; then
-        pass "copilot-command-ring.json is valid JSON"
+    if [ -n "$PYTHON" ]; then
+        if $PYTHON -c "import json, sys; json.load(open(sys.argv[1]))" "$HOOK_JSON" 2>/dev/null; then
+            pass "copilot-command-ring.json is valid JSON"
+        else
+            fail "copilot-command-ring.json is not valid JSON"
+        fi
     else
-        fail "copilot-command-ring.json is not valid JSON"
+        warn "Skipping JSON validation (no Python interpreter)"
     fi
 else
     fail "copilot-command-ring.json not found"
@@ -101,9 +105,10 @@ if [ -n "$PYTHON" ]; then
 
     ALL_EVENTS_OK=true
     for EVT in "${EVENTS[@]}"; do
-        OUTPUT=$(echo '{}' | $PYTHON -m copilot_command_ring.hook_main "$EVT" 2>&1) || true
-        EXIT_CODE=${PIPESTATUS[1]:-0}
-        if [ "$EXIT_CODE" -ne 0 ] 2>/dev/null; then
+        if printf '{}\n' | $PYTHON -m copilot_command_ring.hook_main "$EVT" >/dev/null 2>&1; then
+            :
+        else
+            EXIT_CODE=$?
             fail "hook_main $EVT exited with code $EXIT_CODE"
             ALL_EVENTS_OK=false
         fi

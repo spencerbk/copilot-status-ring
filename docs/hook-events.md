@@ -111,6 +111,12 @@ These are the exact JSON Lines the host bridge sends over serial. Each is a sing
 {"event":"errorOccurred","state":"error","error":"model_error","recoverable":true}
 ```
 
+### Notifications
+
+```json
+{"event":"notification","state":"notify","notification_type":"info","message":"Background task complete"}
+```
+
 ---
 
 ## Required and optional fields
