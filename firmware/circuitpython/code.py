@@ -30,15 +30,15 @@ LOOP_DELAY = 0.02  # ~50 fps
 # ── Color palette ──────────────────────────────────────────────────────────
 COLOR_OFF = (0, 0, 0)
 COLOR_SESSION_START = (60, 60, 50)     # warm white
-COLOR_PROMPT = (0, 80, 200)            # blue
-COLOR_WORKING = (163, 113, 247)          # copilot purple (#A371F7)
-COLOR_TOOL_OK = (0, 200, 0)            # green
-COLOR_TOOL_ERROR = (200, 0, 0)         # red
-COLOR_PERMISSION = (200, 200, 0)       # yellow
-COLOR_SUBAGENT = (140, 0, 200)         # purple
+COLOR_PROMPT = (0, 152, 255)           # copilot blue (#0098FF)
+COLOR_WORKING = (133, 52, 243)         # copilot purple (#8534F3)
+COLOR_TOOL_OK = (15, 191, 62)          # github green (#0FBF3E)
+COLOR_TOOL_ERROR = (218, 54, 51)       # primer danger (#DA3633)
+COLOR_PERMISSION = (210, 153, 34)      # primer attention (#D29922)
+COLOR_SUBAGENT = (200, 0, 160)         # magenta — distinct from working purple
 COLOR_IDLE_DIM = (40, 40, 35)          # dim white
 COLOR_COMPACTING = (0, 180, 180)       # cyan
-COLOR_ERROR = (200, 0, 0)              # red
+COLOR_ERROR = (218, 54, 51)            # primer danger (#DA3633)
 COLOR_NOTIFY = (200, 200, 200)         # white
 
 # State → (animation_function_name, color, kwargs)
@@ -113,7 +113,7 @@ class StatusRing:
         elif anim_name == "blink":
             self._anim_blink(color, elapsed, kwargs.get("period", 0.6))
         elif anim_name == "spinner":
-            self._anim_spinner(color, elapsed, kwargs.get("width", 3),
+            self._anim_spinner(color, elapsed, kwargs.get("width", SPINNER_WIDTH),
                                kwargs.get("period", 1.0))
         elif anim_name == "wipe":
             self._anim_wipe(color, elapsed, kwargs.get("duration", 0.8))
@@ -248,6 +248,13 @@ pixels = neopixel.NeoPixel(
     auto_write=False,
     pixel_order=PIXEL_ORDER,
 )
+
+# ── Startup animation — quick wipe to confirm the ring is alive ────────
+for i in range(NUM_PIXELS):
+    pixels[i] = COLOR_WORKING  # Copilot purple
+    pixels.show()
+    time.sleep(0.02)
+time.sleep(0.3)
 pixels.fill(COLOR_OFF)
 pixels.show()
 
