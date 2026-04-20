@@ -33,7 +33,7 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 |-----------|---------|
 | **NeoPixel Ring** | [Adafruit NeoPixel Ring 24](https://www.adafruit.com/product/1586) — 24 × WS2812B RGB LEDs |
 | **Microcontroller** | Any USB-capable board: RP2040/RP2350 (Pico, XIAO), ESP32-S2/S3/C6 (QT Py, XIAO), Feather M4, etc. |
-| **Data resistor** | 300–500 Ω in series on the NeoPixel data line |
+| **Data resistor** *(optional)* | 300–500 Ω in series on the NeoPixel data line |
 | **Power capacitor** | 500–1000 µF electrolytic across NeoPixel VCC/GND |
 | **Level shifter** *(optional)* | 74AHCT125 for 3.3 V boards driving 5 V NeoPixels |
 

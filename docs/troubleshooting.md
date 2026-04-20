@@ -161,7 +161,7 @@ The firmware is configured for 24 pixels (NeoPixel Ring product 1586). If you're
 
 **Check data pin:**
 
-Make sure the data pin in the firmware matches the pin you've wired. The default is typically `D6` or `board.NEOPIXEL` depending on the board.
+Make sure the data pin in the firmware matches the pin you've wired. The pin name varies by board — e.g. `board.GP6` on Pico, `board.D6` on Feather/XIAO, `board.A0` on QT Py. See [`docs/hardware.md`](hardware.md) for the full pin table.
 
 **Check color order:**
 

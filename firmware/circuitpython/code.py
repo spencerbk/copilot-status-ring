@@ -19,7 +19,7 @@ import usb_cdc
 #   Feather RP2040 / XIAO RP2350 / XIAO ESP32-C6: board.D6 (default)
 #   Raspberry Pi Pico / Pico W:                    board.GP6
 #   QT Py RP2040 / QT Py ESP32-S2 / QT Py ESP32-S3: board.A0
-NEOPIXEL_PIN = board.D6
+NEOPIXEL_PIN = board.GP6
 NUM_PIXELS = 24
 BRIGHTNESS = 0.08  # keep low to avoid blinding / power issues
 PIXEL_ORDER = neopixel.GRB

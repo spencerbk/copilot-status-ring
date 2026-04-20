@@ -35,7 +35,7 @@ Computer ════════════ MCU
 
 **Connections summary:**
 
-1. **Data:** MCU data pin (e.g. D6) → Ring DIN (optionally through a 330 Ω resistor)
+1. **Data:** MCU data pin (e.g. GP6 on Pico, D6 on Feather/XIAO) → Ring DIN (optionally through a 330 Ω resistor)
 2. **Power:** MCU 5V (VBUS) → Ring 5V
 3. **Ground:** MCU GND → Ring GND
 4. **Capacitor:** 1000 µF electrolytic across Ring 5V and Ring GND, as close to the ring as possible
@@ -66,7 +66,7 @@ The firmware does **not** hard-code a specific board. Pin assignments and pixel 
 
 ### Pin configuration by board
 
-The firmware defaults to `board.D6` (CircuitPython) / pin `6` (Arduino). Some boards use different pin names:
+The NeoPixel data pin depends on your board. Edit `NEOPIXEL_PIN` in the firmware to match:
 
 | Board | CircuitPython pin | Arduino pin | Notes |
 |-------|------------------|-------------|-------|
@@ -94,7 +94,7 @@ For Arduino, edit `NEOPIXEL_PIN` in the `.ino` sketch:
 
 | Connection | Recommended gauge | Notes |
 |------------|-------------------|-------|
-| **Data (D6 → Ring DIN)** | 22–26 AWG | Low current signal line; any standard hookup wire works |
+| **Data (MCU data pin → Ring DIN)** | 22–26 AWG | Low current signal line; e.g. GP6 on Pico, D6 on Feather/XIAO ESP32 |
 | **Power (5V → Ring 5V)** | 22–24 AWG | Adequate for the ring at low brightness (6–10%) |
 | **Ground (GND → Ring GND)** | 22–24 AWG | Match the power wire gauge |
 
