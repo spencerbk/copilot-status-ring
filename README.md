@@ -274,6 +274,7 @@ Quick checks:
 - **Ring not responding?** Verify the serial port with `COPILOT_RING_LOG_LEVEL=DEBUG` and check the connection.
 - **No hooks firing?** Ensure you are running Copilot CLI from within this repository — hooks load from `.github/hooks/`.
 - **Permission errors on serial port?** On Linux, add your user to the `dialout` group. On macOS, check `/dev/tty.*` permissions.
+- **Multiple sessions?** Concurrent Copilot CLI sessions on the same machine are safe — a file lock prevents serial corruption. The ring shows a blended "last writer wins" view.
 
 See also: [`docs/setup-windows.md`](docs/setup-windows.md) · [`docs/setup-macos.md`](docs/setup-macos.md) · [`docs/setup-linux.md`](docs/setup-linux.md)
 

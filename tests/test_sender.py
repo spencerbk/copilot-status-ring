@@ -148,3 +148,33 @@ class TestSendEventSerialError:
             ),
         ):
             assert send_event(config, SAMPLE_MESSAGE) is False
+
+
+class TestSendEventLockTimeout:
+    """When the serial lock cannot be acquired, send_event returns False."""
+
+    def test_lock_timeout_returns_false(self) -> None:
+        config = _make_config()
+
+        fake_serial = MagicMock()
+        fake_serial.SerialException = OSError
+        fake_serial.SerialTimeoutException = OSError
+
+        mock_lock = MagicMock()
+        mock_lock.__enter__ = MagicMock(return_value=False)
+        mock_lock.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch("copilot_command_ring.sender.serial", fake_serial),
+            patch(
+                "copilot_command_ring.sender.detect_serial_port",
+                return_value="COM7",
+            ),
+            patch(
+                "copilot_command_ring.sender.SerialLock",
+                return_value=mock_lock,
+            ),
+        ):
+            assert send_event(config, SAMPLE_MESSAGE) is False
+
+        fake_serial.Serial.assert_not_called()

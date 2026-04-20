@@ -15,6 +15,7 @@ from .constants import (
     DEFAULT_BRIGHTNESS,
     DEFAULT_DESCRIPTION_CONTAINS,
     DEFAULT_IDLE_MODE,
+    DEFAULT_LOCK_TIMEOUT,
     DEFAULT_PIXEL_COUNT,
     ENV_BAUD,
     ENV_BRIGHTNESS,
@@ -34,6 +35,7 @@ class Config:
     brightness: float = DEFAULT_BRIGHTNESS
     idle_mode: str = DEFAULT_IDLE_MODE
     dry_run: bool = False
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT
     device_match_descriptions: list[str] = field(
         default_factory=lambda: list(DEFAULT_DESCRIPTION_CONTAINS),
     )

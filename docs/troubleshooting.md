@@ -270,6 +270,39 @@ This shows all serial ports with their descriptions, which can help you identify
 
 ---
 
+## Multiple Copilot CLI sessions
+
+If you run Copilot CLI in multiple terminals (or across different repos) on the same machine, all sessions share the same ring.
+
+**How it works:**
+
+The host bridge uses a system-wide file lock so that concurrent hook processes never corrupt each other's serial writes. Each write acquires the lock, sends one JSON line, and releases it — the lock is held for only a few milliseconds.
+
+The ring shows a **"last writer wins"** blended view: whichever session sent the most recent event determines the current animation. This means the ring may rapidly switch between states if two sessions are actively working.
+
+**What to expect:**
+
+- ✅ No crashes, corrupted writes, or silent failures.
+- ✅ Each session's events reach the ring intact.
+- ⚠️ The ring cannot display two sessions simultaneously — it shows the most recent event from any session.
+- ⚠️ A `sessionEnd` from one session will turn the ring off even if another session is still active.
+
+**If the ring seems stuck or unresponsive during multi-session use:**
+
+1. Enable debug logging in one session to see what events are being sent:
+   ```bash
+   export COPILOT_RING_LOG_LEVEL=DEBUG
+   ```
+2. Check that the lock is not stale. The lock file is at:
+   - **Windows:** `%TEMP%\copilot-command-ring.lock`
+   - **macOS / Linux:** `/tmp/copilot-command-ring.lock`
+
+   Deleting this file is safe — a new lock is created on the next write.
+
+> **Future:** Full session-aware multiplexing (where the ring tracks all active sessions and shows priority-based state) is planned for the daemon mode in v3. See [`ROADMAP.md`](../ROADMAP.md).
+
+---
+
 ## Still stuck?
 
 1. **Enable debug logging:** Set `COPILOT_RING_LOG_LEVEL=DEBUG` and check stderr output.
