@@ -33,7 +33,7 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `postToolUse` (success) | `tool_ok` | Short flash | Green | `tool`, `result` |
 | `postToolUseFailure` | `tool_error` | Red flash | Red | `tool`, `error` |
 | `permissionRequest` | `working` | Spinner | Purple | `tool` |
-| `subagentStart` | `subagent_active` | Chase | Purple | `agent` |
+| `subagentStart` | `subagent_active` | Chase | Magenta | `agent` |
 | `subagentStop` | `idle` | Return to idle | — | `agent` |
 | `agentStop` | `agent_idle` | Dim breathing | White (dim) | `reason` |
 | `preCompact` | `compacting` | Wipe | Cyan | — |
