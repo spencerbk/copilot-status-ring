@@ -59,6 +59,7 @@ ENV_BAUD: Final[str] = "COPILOT_RING_BAUD"
 ENV_BRIGHTNESS: Final[str] = "COPILOT_RING_BRIGHTNESS"
 ENV_LOG_LEVEL: Final[str] = "COPILOT_RING_LOG_LEVEL"
 ENV_DRY_RUN: Final[str] = "COPILOT_RING_DRY_RUN"
+ENV_LOCK_TIMEOUT: Final[str] = "COPILOT_RING_LOCK_TIMEOUT"
 
 # ---------------------------------------------------------------------------
 # Config file name

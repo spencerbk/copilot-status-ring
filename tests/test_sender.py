@@ -111,6 +111,35 @@ class TestSendEventSuccess:
         expected_data = serialize_message(SAMPLE_MESSAGE)
         mock_ser.write.assert_called_once_with(expected_data)
 
+    def test_uses_configured_lock_timeout(self) -> None:
+        config = _make_config(lock_timeout=2.5)
+        mock_ser = MagicMock()
+
+        fake_serial = MagicMock()
+        fake_serial.Serial.return_value.__enter__ = MagicMock(return_value=mock_ser)
+        fake_serial.Serial.return_value.__exit__ = MagicMock(return_value=False)
+        fake_serial.SerialException = OSError
+        fake_serial.SerialTimeoutException = OSError
+
+        mock_lock = MagicMock()
+        mock_lock.__enter__ = MagicMock(return_value=True)
+        mock_lock.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch("copilot_command_ring.sender.serial", fake_serial),
+            patch(
+                "copilot_command_ring.sender.detect_serial_port",
+                return_value="COM7",
+            ),
+            patch(
+                "copilot_command_ring.sender.SerialLock",
+                return_value=mock_lock,
+            ) as mock_lock_cls,
+        ):
+            assert send_event(config, SAMPLE_MESSAGE) is True
+
+        mock_lock_cls.assert_called_once_with(timeout=2.5)
+
 
 class TestSendEventSerialError:
     """Serial errors are caught and return False."""

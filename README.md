@@ -127,6 +127,7 @@ Configuration is resolved in this order: **environment variable > config file > 
 | `COPILOT_RING_BRIGHTNESS` | `0.04` | LED brightness (`0.0`–`1.0`) |
 | `COPILOT_RING_LOG_LEVEL` | `WARNING` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `COPILOT_RING_DRY_RUN` | `false` | If `true`, log messages to stderr instead of sending to serial |
+| `COPILOT_RING_LOCK_TIMEOUT` | `1.0` | Seconds to wait for the multi-session serial lock before skipping the send |
 
 ### Config File
 
@@ -137,6 +138,7 @@ Create `.copilot-command-ring.local.json` in the repo root (git-ignored):
   "serial_port": "COM7",
   "baud": 115200,
   "brightness": 0.04,
+  "lock_timeout": 1.0,
   "idle_mode": "off",
   "device_match": {
     "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial"]

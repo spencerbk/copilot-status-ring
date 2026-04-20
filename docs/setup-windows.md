@@ -149,3 +149,4 @@ If the ring doesn't respond, check:
 | `COPILOT_RING_BRIGHTNESS` | LED brightness (0.0–1.0) | `0.04` |
 | `COPILOT_RING_LOG_LEVEL` | Log verbosity | `DEBUG` |
 | `COPILOT_RING_DRY_RUN` | Skip serial send | `1` |
+| `COPILOT_RING_LOCK_TIMEOUT` | Multi-session serial lock wait (seconds) | `1.0` |

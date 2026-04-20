@@ -20,6 +20,7 @@ from .constants import (
     ENV_BAUD,
     ENV_BRIGHTNESS,
     ENV_DRY_RUN,
+    ENV_LOCK_TIMEOUT,
     ENV_PORT,
 )
 from .logging_util import get_logger
@@ -80,6 +81,16 @@ def _apply_file(cfg: Config, path: Path) -> None:
         cfg.brightness = float(data["brightness"])
     if "idle_mode" in data and isinstance(data["idle_mode"], str):
         cfg.idle_mode = data["idle_mode"]
+    if "lock_timeout" in data and isinstance(data["lock_timeout"], (int, float)):
+        lock_timeout = float(data["lock_timeout"])
+        if lock_timeout >= 0.0:
+            cfg.lock_timeout = lock_timeout
+        else:
+            log.debug(
+                "Invalid lock_timeout value %r in %s; ignoring",
+                data["lock_timeout"],
+                path,
+            )
 
     device_match = data.get("device_match")
     if isinstance(device_match, dict):
@@ -120,6 +131,21 @@ def _apply_env(cfg: Config) -> None:
         cfg.dry_run = True
         log.debug("ENV override %s=%s (dry_run=True)", ENV_DRY_RUN, dry_run_str)
 
+    lock_timeout_str = os.environ.get(ENV_LOCK_TIMEOUT)
+    if lock_timeout_str:
+        try:
+            lock_timeout = float(lock_timeout_str)
+            if lock_timeout < 0.0:
+                raise ValueError
+            cfg.lock_timeout = lock_timeout
+            log.debug("ENV override %s=%s", ENV_LOCK_TIMEOUT, cfg.lock_timeout)
+        except ValueError:
+            log.debug(
+                "Invalid %s value %r; ignoring",
+                ENV_LOCK_TIMEOUT,
+                lock_timeout_str,
+            )
+
 
 def load_config(config_dir: Path | None = None) -> Config:
     """Build a :class:`Config` by merging defaults, file, and env vars.
@@ -147,12 +173,13 @@ def load_config(config_dir: Path | None = None) -> Config:
 
     log.debug(
         "Final config: port=%s baud=%d pixels=%d brightness=%.2f "
-        "idle=%s dry_run=%s",
+        "idle=%s dry_run=%s lock_timeout=%.2f",
         cfg.serial_port,
         cfg.baud,
         cfg.pixel_count,
         cfg.brightness,
         cfg.idle_mode,
         cfg.dry_run,
+        cfg.lock_timeout,
     )
     return cfg
