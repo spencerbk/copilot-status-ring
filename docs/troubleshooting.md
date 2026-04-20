@@ -155,10 +155,13 @@ export COPILOT_RING_BRIGHTNESS=0.15
 
 If the Pico or other CircuitPython board stops responding and only recovers after a reset, update to the latest `firmware/circuitpython/code.py`.
 
-Recent firmware versions include two safeguards for long-running sessions:
+Recent firmware versions include several safeguards for long-running sessions:
 
-- A capped serial input buffer so malformed or partial JSON without a newline cannot grow forever in RAM
-- Periodic `gc.collect()` calls to reduce memory pressure from repeated JSON parsing
+- A capped byte buffer so malformed or partial serial data without a newline cannot grow forever in RAM
+- Draining all queued JSON lines each loop so valid traffic cannot backlog indefinitely in memory
+- Clearing stale partial input after a USB disconnect/reconnect
+- Running `gc.collect()` after serial parsing work to reclaim memory from parsed JSON dicts
+- Using a watchdog plus firmware reload path so repeated loop failures recover automatically
 
 **If you may be running older firmware:**
 

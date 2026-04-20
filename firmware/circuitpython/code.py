@@ -13,7 +13,19 @@ import time
 
 import board  # type: ignore[reportMissingImports]
 import neopixel  # type: ignore[reportMissingImports]
+import supervisor  # type: ignore[reportMissingImports]
 import usb_cdc  # type: ignore[reportMissingImports]
+
+# Optional watchdog — not all boards support it
+try:
+    import microcontroller  # type: ignore[reportMissingImports]
+    from watchdog import WatchDogMode  # type: ignore[reportMissingImports]
+
+    _WATCHDOG = microcontroller.watchdog
+    _WATCHDOG_RESET = WatchDogMode.RESET
+except ImportError:
+    _WATCHDOG = None
+    _WATCHDOG_RESET = None
 
 # ── Configuration ──────────────────────────────────────────────────────────
 # Data pin for the NeoPixel ring — change to match your board:
@@ -28,6 +40,8 @@ PIXEL_ORDER = neopixel.GRB
 SPINNER_WIDTH = 6  # number of LEDs in the spinner segment
 LOOP_DELAY = 0.02  # ~50 fps
 SERIAL_BUF_MAX = 512  # discard buffer if no newline within this many bytes
+WATCHDOG_TIMEOUT = 8  # keep longer than normal render loop latency
+MAX_CONSECUTIVE_ERRORS = 10  # force reload after this many consecutive loop failures
 
 # ── Color palette ──────────────────────────────────────────────────────────
 COLOR_OFF = (0, 0, 0)
@@ -213,39 +227,79 @@ class StatusRing:
 # ── Serial reader ──────────────────────────────────────────────────────────
 
 serial = usb_cdc.data
-_serial_buf = ""
+_serial_buf = bytearray()
+_was_connected = True
+
+
+def log_exception(context, exc):
+    """Print a concise error to the CircuitPython console."""
+    print(context, type(exc).__name__, exc)
 
 
 def read_serial():
-    """Read available bytes and return a complete line, or None.
+    """Read available bytes and return the latest state plus parse activity.
 
-    Accumulates partial reads in *_serial_buf* and splits on newlines.
-    Only the first complete line per call is returned; remaining data
-    stays in the buffer for the next call.
+    Drains all complete lines from the buffer each call so that the
+    buffer cannot grow without bound under sustained traffic.  Only the
+    last received state string is returned (older messages are discarded)
+    because only the most recent state matters for the ring.
     """
-    global _serial_buf  # noqa: PLW0603 — intentional module-level buffer
+    global _serial_buf, _was_connected  # noqa: PLW0603
 
     if serial is None:
-        return None
+        return None, False
+
+    # Clear stale buffer data on USB disconnect/reconnect
+    connected = getattr(serial, "connected", True)
+    if not connected:
+        _was_connected = False
+        _serial_buf[:] = b""
+        return None, False
+    if not _was_connected:
+        _was_connected = True
+        _serial_buf[:] = b""
+
     try:
         if serial.in_waiting:
             raw = serial.read(serial.in_waiting)
             if raw:
-                _serial_buf += raw.decode("utf-8", "replace")
-    except Exception:
+                _serial_buf.extend(raw)
+    except Exception as exc:
         # Serial errors should never crash the firmware
-        return None
+        log_exception("serial read error", exc)
+        return None, False
 
-    newline = _serial_buf.find("\n")
-    if newline < 0:
-        # Prevent unbounded buffer growth from malformed data
+    # Prevent unbounded buffer growth from malformed data (no newlines)
+    if len(_serial_buf) > SERIAL_BUF_MAX:
+        # Keep only data after the last newline, or discard everything
+        last_nl = _serial_buf.rfind(b"\n")
+        if last_nl >= 0:
+            del _serial_buf[:last_nl + 1]
+        else:
+            _serial_buf[:] = b""
         if len(_serial_buf) > SERIAL_BUF_MAX:
-            _serial_buf = ""
-        return None
+            _serial_buf[:] = b""
 
-    line = _serial_buf[:newline].strip()
-    _serial_buf = _serial_buf[newline + 1:]
-    return line if line else None
+    # Drain all complete lines, keep only the last valid state
+    latest_state = None
+    parsed_line = False
+    while True:
+        newline = _serial_buf.find(b"\n")
+        if newline < 0:
+            break
+        parsed_line = True
+        line_bytes = bytes(_serial_buf[:newline])
+        del _serial_buf[:newline + 1]
+        try:
+            line = line_bytes.decode("utf-8", "replace").strip()
+            if line:
+                msg = json.loads(line)
+                state = msg.get("state", "off")
+                latest_state = state
+        except (ValueError, KeyError, UnicodeError):
+            pass  # discard malformed lines
+
+    return latest_state, parsed_line
 
 
 # ── Initialisation ─────────────────────────────────────────────────────────
@@ -268,26 +322,43 @@ pixels.fill(COLOR_OFF)
 pixels.show()
 
 ring = StatusRing(pixels, NUM_PIXELS)
-_gc_counter = 0
+_consecutive_errors = 0
+
+# Enable hardware watchdog for automatic recovery from hangs
+if _WATCHDOG is not None and _WATCHDOG_RESET is not None:
+    _WATCHDOG.timeout = WATCHDOG_TIMEOUT
+    _WATCHDOG.mode = _WATCHDOG_RESET
 
 # ── Main loop ──────────────────────────────────────────────────────────────
 
 while True:
-    line = read_serial()
-    if line:
-        try:
-            msg = json.loads(line)
-            state = msg.get("state", "off")
+    try:
+        state, parsed_line = read_serial()
+        if state is not None:
             ring.set_state(state)
-        except (ValueError, KeyError):
-            pass  # discard malformed JSON
 
-    ring.tick(time.monotonic())
-
-    # Periodic GC to reclaim memory from parsed JSON dicts
-    _gc_counter += 1
-    if _gc_counter >= 50:  # ~once per second at 50 fps
+        ring.tick(time.monotonic())
+        if parsed_line:
+            gc.collect()
+        _consecutive_errors = 0
+    except MemoryError as exc:
+        # Critical: free memory and reset to safe state
+        log_exception("main loop error", exc)
         gc.collect()
-        _gc_counter = 0
+        ring.pixels.fill(COLOR_OFF)
+        ring.pixels.show()
+        ring.set_state("off")
+        _consecutive_errors += 1
+    except Exception as exc:
+        log_exception("main loop error", exc)
+        _consecutive_errors += 1
+
+    # Force full restart if the loop is persistently failing
+    if _consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+        supervisor.reload()
+
+    # Feed the watchdog to prevent reset
+    if _WATCHDOG is not None:
+        _WATCHDOG.feed()
 
     time.sleep(LOOP_DELAY)
