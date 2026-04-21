@@ -115,6 +115,21 @@ ls .github/hooks/copilot-command-ring.json            # per-repo
 Hook support requires a recent version of GitHub Copilot CLI. Update it using the
 same installation method you used originally.
 
+**Reinstalled or moved your virtual environment?**
+
+The hook scripts record the path to the Python interpreter that was active when you ran `setup` or `deploy`. If you delete and recreate the venv, or install on a new machine, the recorded path becomes stale. Re-run the hook install command you used:
+
+```bash
+# Global hooks
+copilot-command-ring setup --force
+
+# Per-repo hooks
+copilot-command-ring deploy /path/to/your-repo --force
+```
+
+If the hooks can't find any Python runner, they now print a diagnostic to stderr:
+`copilot-command-ring: no runner found; rerun setup/deploy`
+
 **Check that wrapper scripts are executable (macOS/Linux):**
 
 ```bash
