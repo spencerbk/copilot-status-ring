@@ -83,6 +83,10 @@ class TestHookMainIntegration:
             ("agentStop", {"stopReason": "end_turn"}),
             ("preCompact", {"trigger": "auto"}),
             ("errorOccurred", {"error": {"name": "Err", "message": "msg"}, "recoverable": True}),
+            (
+                "notification",
+                {"notification_type": "info", "message": "Agent completed background task"},
+            ),
         ]
         for event_name, payload in events:
             result = _run_hook(event_name, payload)
@@ -139,6 +143,7 @@ class TestHookMainIntegration:
             "agentStop.json": "agentStop",
             "preCompact.json": "preCompact",
             "errorOccurred.json": "errorOccurred",
+            "notification.json": "notification",
         }
         for filename, event_name in fixture_map.items():
             fixture_path = FIXTURES / filename
@@ -148,6 +153,15 @@ class TestHookMainIntegration:
             result = _run_hook(event_name, payload)
             assert result.returncode == 0, f"{filename}: exit {result.returncode}"
             assert result.stdout == "", f"{filename}: stdout={result.stdout!r}"
+
+    def test_notification_dry_run_logs_notify_state(self) -> None:
+        result = _run_hook(
+            "notification",
+            {"notification_type": "info", "message": "Agent completed background task"},
+        )
+        assert result.returncode == 0
+        assert result.stdout == ""
+        assert '"state": "notify"' in result.stderr or '"state":"notify"' in result.stderr
 
     def test_session_field_in_dry_run_output(self) -> None:
         """When COPILOT_RING_CLI_PID is set, the session field appears in output."""

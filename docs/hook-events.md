@@ -39,7 +39,9 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `preCompact` | `compacting` | Wipe | Cyan | — |
 | `errorOccurred` | `error` | Flash (long) | Red | `error`, `message`, `recoverable`, `errorContext` |
 | `sessionEnd` | `off` | Off | — | `reason` |
-| `notification` | `notify` | Flash | White | `notification_type`, `message` |
+| `notification` | `notify` | Flash (suppressed while busy) | White | `notification_type`, `message` |
+
+When a `notification` arrives while the winning persistent state is `working`, `subagent_active`, or `compacting`, the firmware suppresses the white flash and leaves the busy animation running.
 
 ---
 
@@ -116,6 +118,8 @@ These are the exact JSON Lines the host bridge sends over serial. Each is a sing
 ```json
 {"event":"notification","state":"notify","notification_type":"info","message":"Background task complete"}
 ```
+
+The host still sends the normalized `notify` message above. Busy-state suppression happens in firmware so idle sessions can still show the white notification flash.
 
 ---
 

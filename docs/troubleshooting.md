@@ -211,6 +211,16 @@ Make sure the data pin in the firmware matches the pin you've wired. The Circuit
 
 Most NeoPixel rings use GRB color order. If colors appear swapped (e.g. red when it should be green), check the color order setting in the firmware.
 
+**Unexpected white flashes while the ring should stay busy:**
+
+The firmware now suppresses `notification` flashes while the winning state is `working`, `subagent_active`, or `compacting`. If you still see white flashes during active work, enable debug logging and inspect which events are being sent:
+
+```bash
+export COPILOT_RING_LOG_LEVEL=DEBUG
+```
+
+Look for `notification` payloads in the hook debug output. If the flash is caused by some other state transition, that output will show which event to trace next.
+
 ---
 
 ## Permission denied on serial port

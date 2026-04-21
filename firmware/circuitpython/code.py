@@ -106,6 +106,9 @@ TRANSIENT_STATES = {"tool_ok", "tool_error", "error", "notify"}
 # States that get a brightness boost for visibility
 BOOSTED_STATES = {"agent_idle"}
 
+# Suppress white notification flashes while a clearly busy state is already visible.
+NOTIFY_SUPPRESSED_WHILE_BUSY = {"working", "subagent_active", "compacting"}
+
 # ── Multi-session arbitration ──────────────────────────────────────────────
 # Priority order: higher value = the ring should prefer this state when
 # multiple sessions are active.  Only persistent (non-transient) states are
@@ -124,6 +127,15 @@ STATE_PRIORITY = {
 }
 MAX_SESSIONS = 8
 STALE_TIMEOUT = 300  # seconds before an idle session is pruned
+
+
+def should_apply_transient(persistent_state, transient):
+    """Return whether *transient* should overlay *persistent_state*."""
+    if transient is None:
+        return False
+    if transient != "notify":
+        return True
+    return persistent_state not in NOTIFY_SUPPRESSED_WHILE_BUSY
 
 
 # ── Animation engine ───────────────────────────────────────────────────────
@@ -514,7 +526,7 @@ while True:
         if has_sessions or tracker.active_count > 0:
             winning, transient = tracker.resolve(now)
             ring.set_state(winning)
-            if transient is not None:
+            if should_apply_transient(winning, transient):
                 ring.set_state(transient)
         elif bare_state is not None:
             ring.set_state(bare_state)

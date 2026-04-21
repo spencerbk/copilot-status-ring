@@ -177,8 +177,10 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 | `agentStop` | `agent_idle` | breathing | dim white |
 | `preCompact` | `compacting` | wipe | cyan |
 | `errorOccurred` | `error` | flash | red |
-| `notification` | `notify` | flash | white |
+| `notification` | `notify` | flash (suppressed while busy) | white |
 | `sessionEnd` | `off` | off | — |
+
+When a `notification` arrives while the ring is already showing `working`, `subagent_active`, or `compacting`, the firmware keeps the busy animation instead of interrupting it with a white flash.
 
 The serial protocol uses JSON Lines — one JSON object per line over USB serial. See [`docs/hook-events.md`](docs/hook-events.md) for the full protocol specification.
 
