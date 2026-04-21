@@ -4,6 +4,16 @@ Step-by-step guide to set up the Copilot Command Ring on Windows.
 
 ---
 
+## 0. Install GitHub Copilot CLI
+
+This project requires the **GitHub Copilot CLI** agent — the ring visualizes its activity. Follow the [Installing GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) guide to install and authenticate it. Verify it's working:
+
+```powershell
+copilot --version
+```
+
+---
+
 ## 1. Install Python
 
 You need Python 3.9 or later. Install it using one of these methods:
