@@ -34,9 +34,9 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 |-----------|---------|
 | **NeoPixel Ring** | [Adafruit NeoPixel Ring 24](https://www.adafruit.com/product/1586) — 24 × WS2812B RGB LEDs |
 | **Microcontroller** | Any USB-capable board: RP2040/RP2350 (Pico, XIAO), ESP32-S2/S3/C6 (QT Py, XIAO), Feather M4, etc. |
-| **Data resistor** *(optional)* | 300–500 Ω in series on the NeoPixel data line |
-| **Power capacitor** | 500–1000 µF electrolytic across NeoPixel VCC/GND |
-| **Level shifter** *(optional)* | 74AHCT125 for 3.3 V boards driving 5 V NeoPixels |
+| *(optional)* **Data resistor** | 300–500 Ω in series on the NeoPixel data line |
+| *(optional)* **Power capacitor** | 500–1000 µF electrolytic across NeoPixel VCC/GND |
+| *(optional)* **Level shifter** | 74AHCT125 for 3.3 V boards driving 5 V NeoPixels |
 
 > **Tip:** Connect grounds first, disconnect grounds last. See [`docs/hardware.md`](docs/hardware.md) for wiring diagrams and power guidance.
 
@@ -70,23 +70,23 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
+Or from a local clone:
+
+```bash
+git clone https://github.com/spencerbk/copilot-status-ring.git && cd copilot-status-ring && pip install .
+```
+
 **Windows (PowerShell):**
 
 ```powershell
 pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
-> **Or from a local clone:**
->
-> ```bash
-> # macOS / Linux
-> git clone https://github.com/spencerbk/copilot-status-ring.git && cd copilot-status-ring && pip install .
-> ```
->
-> ```powershell
-> # Windows (PowerShell)
-> git clone https://github.com/spencerbk/copilot-status-ring.git; cd copilot-status-ring; pip install .
-> ```
+Or from a local clone:
+
+```powershell
+git clone https://github.com/spencerbk/copilot-status-ring.git; cd copilot-status-ring; pip install .
+```
 
 ### 2. Flash firmware
 
