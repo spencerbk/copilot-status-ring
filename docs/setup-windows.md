@@ -28,8 +28,16 @@ py -3 --version
 
 ## 2. Install the host bridge
 
+> **Recommended:** Create a virtual environment first so the CLI lands on your PATH:
+>
+> ```powershell
+> py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1
+> ```
+>
+> Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
+
 ```powershell
-py -3 -m pip install git+https://github.com/spencerbk/copilot-status-ring.git
+pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
 Verify:
@@ -127,7 +135,7 @@ This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run
 Run the simulator to verify the host bridge works without a connected device:
 
 ```powershell
-py -3 -m copilot_command_ring.simulate --dry-run
+python -m copilot_command_ring.simulate --dry-run
 ```
 
 This sends a sequence of test events and prints the serial messages that *would* be sent. You should see JSON Lines like:
@@ -141,7 +149,7 @@ This sends a sequence of test events and prints the serial messages that *would*
 To send events to a real device:
 
 ```powershell
-py -3 -m copilot_command_ring.simulate
+python -m copilot_command_ring.simulate
 ```
 
 ---

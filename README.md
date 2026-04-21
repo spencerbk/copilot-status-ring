@@ -51,21 +51,37 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 
 ### 1. Install the host bridge
 
+> **Recommended:** Use a virtual environment so the `copilot-command-ring` CLI lands on your PATH automatically.
+>
+> **macOS / Linux:** `python3 -m venv .venv && source .venv/bin/activate`
+>
+> **Windows (PowerShell):** `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`
+>
+> Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
+
 **macOS / Linux:**
 
 ```bash
-pip3 install git+https://github.com/spencerbk/copilot-status-ring.git
+pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-py -3 -m pip install git+https://github.com/spencerbk/copilot-status-ring.git
+pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
 > **Or from a local clone:**
-> - **macOS / Linux:** `git clone https://github.com/spencerbk/copilot-status-ring.git && cd copilot-status-ring && pip3 install .`
-> - **Windows (PowerShell):** `git clone https://github.com/spencerbk/copilot-status-ring.git; cd copilot-status-ring; py -3 -m pip install .`
+>
+> ```bash
+> # macOS / Linux
+> git clone https://github.com/spencerbk/copilot-status-ring.git && cd copilot-status-ring && pip install .
+> ```
+>
+> ```powershell
+> # Windows (PowerShell)
+> git clone https://github.com/spencerbk/copilot-status-ring.git; cd copilot-status-ring; pip install .
+> ```
 
 ### 2. Flash firmware
 
@@ -200,7 +216,8 @@ copilot-status-ring/
 ```bash
 git clone https://github.com/spencerbk/copilot-status-ring.git
 cd copilot-status-ring
-pip3 install -e ".[dev]"
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
 ```
 
 **Windows (PowerShell):**
@@ -208,7 +225,8 @@ pip3 install -e ".[dev]"
 ```powershell
 git clone https://github.com/spencerbk/copilot-status-ring.git
 cd copilot-status-ring
-py -3 -m pip install -e ".[dev]"
+py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
 ```
 
 ### Run tests
@@ -222,7 +240,7 @@ python3 -m pytest tests/ -v
 **Windows (PowerShell):**
 
 ```powershell
-py -3 -m pytest tests/ -v
+python -m pytest tests/ -v
 ```
 
 ### Lint
@@ -236,7 +254,7 @@ python3 -m ruff check host/ tests/
 **Windows (PowerShell):**
 
 ```powershell
-py -3 -m ruff check host/ tests/
+python -m ruff check host/ tests/
 ```
 
 ### Simulate hook events (no hardware needed)
@@ -250,7 +268,7 @@ python3 -m copilot_command_ring.simulate --dry-run
 **Windows (PowerShell):**
 
 ```powershell
-py -3 -m copilot_command_ring.simulate --dry-run
+python -m copilot_command_ring.simulate --dry-run
 ```
 
 ### Validate platform setup

@@ -60,24 +60,22 @@ The installed host bridge depends on `pyserial`. Reinstall or upgrade
 `copilot-command-ring` so pip installs the dependency automatically.
 
 ```powershell
-# Windows
-py -3 -m pip install --upgrade git+https://github.com/spencerbk/copilot-status-ring.git
+# Windows (venv active)
+pip install --upgrade git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
 ```bash
-# macOS / Linux
-pip3 install --upgrade git+https://github.com/spencerbk/copilot-status-ring.git
+# macOS / Linux (venv active)
+pip install --upgrade git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
 If you're working from a local clone instead of a Git install:
 
 ```bash
-pip3 install -e .
+pip install -e .
 ```
 
-```powershell
-py -3 -m pip install -e .
-```
+> **Note:** If not using a virtual environment, substitute `py -3 -m pip` (Windows) or `pip3` (macOS/Linux).
 
 ---
 

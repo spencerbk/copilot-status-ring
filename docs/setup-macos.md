@@ -24,8 +24,14 @@ Or download from [python.org/downloads](https://www.python.org/downloads/).
 
 ## 2. Install the host bridge
 
+> **Recommended:** Create a virtual environment first:
+>
+> ```bash
+> python3 -m venv .venv && source .venv/bin/activate
+> ```
+
 ```bash
-pip3 install git+https://github.com/spencerbk/copilot-status-ring.git
+pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
 Verify:
