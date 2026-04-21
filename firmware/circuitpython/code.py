@@ -138,21 +138,50 @@ class StatusRing:
         self.prev_state = "off"
         self.state_start = 0.0
         self.step = 0
+        self._saved_state = "off"
+        self._saved_start = 0.0
+        self._saved_step = 0
 
     def set_state(self, new_state):
-        """Transition to *new_state*, recording the previous state."""
+        """Transition to *new_state*, recording the previous state.
+
+        When returning from a transient flash to the same persistent
+        state, saved animation timing is restored so continuous
+        animations (e.g. spinner) resume without a visible restart.
+        """
         if new_state not in STATE_MAP:
             new_state = "off"
-        if new_state != self.state:
-            self.prev_state = self.state
+        if new_state == self.state:
+            return
+
+        # Returning from a transient flash to the same persistent state —
+        # restore saved animation timing so the spinner continues seamlessly.
+        if self.state in TRANSIENT_STATES and new_state == self._saved_state:
+            self.prev_state = new_state
             self.state = new_state
-            self.state_start = time.monotonic()
-            self.step = 0
-            # Boost brightness for dim states, restore for others
+            self.state_start = self._saved_start
+            self.step = self._saved_step
             if new_state in BOOSTED_STATES:
                 self.pixels.brightness = BRIGHTNESS + BRIGHTNESS_BOOST
-            elif self.prev_state in BOOSTED_STATES:
-                self.pixels.brightness = BRIGHTNESS
+            return
+
+        # Entering a transient — save current timing only from a
+        # non-transient state so nested transients don't overwrite the
+        # original persistent animation timing.
+        if new_state in TRANSIENT_STATES and self.state not in TRANSIENT_STATES:
+            self._saved_state = self.state
+            self._saved_start = self.state_start
+            self._saved_step = self.step
+
+        self.prev_state = self.state
+        self.state = new_state
+        self.state_start = time.monotonic()
+        self.step = 0
+        # Boost brightness for dim states, restore for others
+        if new_state in BOOSTED_STATES:
+            self.pixels.brightness = BRIGHTNESS + BRIGHTNESS_BOOST
+        elif self.prev_state in BOOSTED_STATES:
+            self.pixels.brightness = BRIGHTNESS
 
     # ── tick dispatcher ────────────────────────────────────────────────
 
@@ -194,12 +223,18 @@ class StatusRing:
 
     def _revert(self):
         """Return to the previous state (used by flash/transient anims)."""
-        target = self.prev_state
+        target = self._saved_state
         if target in TRANSIENT_STATES:
             target = "off"
+        self.prev_state = target
         self.state = target
-        self.state_start = time.monotonic()
-        self.step = 0
+        # Restore saved timing so continuous animations resume seamlessly
+        if target != "off":
+            self.state_start = self._saved_start
+            self.step = self._saved_step
+        else:
+            self.state_start = time.monotonic()
+            self.step = 0
         # Re-apply brightness boost if reverting to a boosted state
         if target in BOOSTED_STATES:
             self.pixels.brightness = BRIGHTNESS + BRIGHTNESS_BOOST
@@ -403,10 +438,7 @@ def read_serial(tracker):
     if len(_serial_buf) > SERIAL_BUF_MAX:
         # Keep only data after the last newline, or discard everything
         last_nl = _serial_buf.rfind(b"\n")
-        if last_nl >= 0:
-            _serial_buf = bytearray(_serial_buf[last_nl + 1:])
-        else:
-            _serial_buf = bytearray()
+        _serial_buf = bytearray(_serial_buf[last_nl + 1:]) if last_nl >= 0 else bytearray()
         if len(_serial_buf) > SERIAL_BUF_MAX:
             _serial_buf = bytearray()
 
