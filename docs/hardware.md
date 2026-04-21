@@ -62,25 +62,25 @@ Any board that supports CircuitPython and/or Arduino with native USB will work. 
 | **Seeed Studio XIAO RP2350** | CircuitPython | RP2350 dual-core, ultra-compact; default `D6` pin works |
 | **Seeed Studio XIAO ESP32-C6** | CircuitPython + Arduino | Wi-Fi 6 + BLE 5, ultra-compact; default `D6` pin works |
 
-The firmware does **not** hard-code a specific board. Pin assignments and pixel count are configurable.
+The firmware does **not** hard-code a specific board. The CircuitPython firmware auto-detects the correct NeoPixel data pin at startup. Pin count is configurable.
 
 ### Pin configuration by board
 
-The NeoPixel data pin depends on your board. Edit `NEOPIXEL_PIN` in the firmware to match:
+The CircuitPython firmware auto-detects the NeoPixel data pin using `board.board_id`. For Arduino, edit `NEOPIXEL_PIN` in the `.ino` sketch.
 
-| Board | CircuitPython pin | Arduino pin | Notes |
-|-------|------------------|-------------|-------|
-| Raspberry Pi Pico | `board.GP6` | `6` | Change pin to `board.GP6` |
-| Adafruit Feather RP2040 | `board.D6` | `6` | Default works |
-| Adafruit QT Py RP2040 | `board.A0` | `A0` | No D6 on QT Py boards |
-| Adafruit QT Py ESP32-S2 | `board.A0` | `A0` | No D6; use any available GPIO |
-| Adafruit QT Py ESP32-S3 | `board.A0` | `A0` | No D6; use any available GPIO |
-| Seeed Studio XIAO RP2350 | `board.D6` | — | Default works; Arduino not yet supported |
-| Seeed Studio XIAO ESP32-C6 | `board.D6` | `6` | Default works |
+| Board | CircuitPython pin (auto-detected) | Arduino pin | Notes |
+|-------|----------------------------------|-------------|-------|
+| Raspberry Pi Pico | `board.GP6` | `6` | Auto-detected |
+| Adafruit Feather RP2040 | `board.D6` | `6` | Auto-detected |
+| Adafruit QT Py RP2040 | `board.A0` | `A0` | Auto-detected; no D6 on QT Py boards |
+| Adafruit QT Py ESP32-S2 | `board.A0` | `A0` | Auto-detected; no D6 |
+| Adafruit QT Py ESP32-S3 | `board.A0` | `A0` | Auto-detected; no D6 |
+| Seeed Studio XIAO RP2350 | `board.D6` | — | Auto-detected; Arduino not yet supported |
+| Seeed Studio XIAO ESP32-C6 | `board.D6` | `6` | Auto-detected |
 
-To change the pin in CircuitPython, edit `NEOPIXEL_PIN` at the top of `code.py`:
+To override CircuitPython auto-detection, edit `NEOPIXEL_PIN` at the top of `code.py`:
 ```python
-NEOPIXEL_PIN = board.A0  # QT Py boards
+NEOPIXEL_PIN = board.A0  # override auto-detection
 ```
 
 For Arduino, edit `NEOPIXEL_PIN` in the `.ino` sketch:

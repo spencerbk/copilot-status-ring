@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
-from .constants import EVENT_STATE_MAP, STATE_IDLE
+import os
+
+from .constants import ENV_CLI_PID, EVENT_STATE_MAP, STATE_IDLE
 
 
 def _set_if(out: dict[str, object], key: str, value: object) -> None:
@@ -67,5 +69,8 @@ def normalize_event(
     elif event_name == "notification":
         _set_if(out, "notification_type", payload.get("notification_type"))
         _set_if(out, "message", payload.get("message"))
+
+    # Session ID for multi-session firmware arbitration
+    _set_if(out, "session", os.environ.get(ENV_CLI_PID))
 
     return out

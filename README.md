@@ -14,7 +14,8 @@ Copilot Command Ring turns an [Adafruit NeoPixel Ring (24 RGB LEDs)](https://www
 Copilot CLI
     │
     ▼
-.github/hooks/
+~/.copilot/hooks/           (global — works in all repos)
+or .github/hooks/           (per-repo — optional additional install)
     │
     ▼
 run-hook.ps1 / run-hook.sh
@@ -48,23 +49,39 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 
 ## Quick Start
 
-### 1. Clone and install
+### 1. Install the host bridge
+
+> **Recommended:** Use a virtual environment so the `copilot-command-ring` CLI lands on your PATH automatically.
+>
+> **macOS / Linux:** `python3 -m venv .venv && source .venv/bin/activate`
+>
+> **Windows (PowerShell):** `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`
+>
+> Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
 
 **macOS / Linux:**
 
 ```bash
-git clone https://github.com/spencerbk/copilot-status-ring.git
-cd copilot-status-ring
-pip3 install -r requirements.txt
+pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-git clone https://github.com/spencerbk/copilot-status-ring.git
-cd copilot-status-ring
-py -3 -m pip install -r requirements.txt
+pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
+
+> **Or from a local clone:**
+>
+> ```bash
+> # macOS / Linux
+> git clone https://github.com/spencerbk/copilot-status-ring.git && cd copilot-status-ring && pip install .
+> ```
+>
+> ```powershell
+> # Windows (PowerShell)
+> git clone https://github.com/spencerbk/copilot-status-ring.git; cd copilot-status-ring; pip install .
+> ```
 
 ### 2. Flash firmware
 
@@ -80,39 +97,35 @@ py -3 -m pip install -r requirements.txt
 2. Install the **Adafruit NeoPixel** library via Library Manager.
 3. Upload to your board.
 
-### 3. Configure the serial port
+### 3. Activate the ring
 
-Copy the example config and set your port:
+**One-time global setup (recommended):**
+
+```bash
+copilot-command-ring setup
+```
+
+This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. No per-repo configuration needed.
+
+**Or per-repo deploy (alternative):**
+
+Run from any directory — this writes hook files into your target repo:
 
 **macOS / Linux:**
 
 ```bash
-cp .copilot-command-ring.local.json.example .copilot-command-ring.local.json
+copilot-command-ring deploy ~/code/my-project
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-Copy-Item .copilot-command-ring.local.json.example .copilot-command-ring.local.json
+copilot-command-ring deploy C:\code\my-project
 ```
 
-Edit `.copilot-command-ring.local.json` and set `serial_port` to your board's port (e.g., `COM7` on Windows, `/dev/ttyACM0` on Linux). Or set the environment variable:
+This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. Repeat for each repo where you want the ring active.
 
-**macOS / Linux:**
-
-```bash
-export COPILOT_RING_PORT=/dev/ttyACM0
-```
-
-**Windows (PowerShell):**
-
-```powershell
-$env:COPILOT_RING_PORT = "COM7"
-```
-
-### 4. Use with Copilot CLI
-
-The hooks in `.github/hooks/` are loaded automatically when you run Copilot CLI from this repository. No additional setup is needed — start a Copilot CLI session and the ring lights up.
+> **Tip:** The deployed hooks auto-detect your board — no port configuration needed. Start a Copilot CLI session and the ring lights up.
 
 ## Configuration
 
@@ -135,18 +148,17 @@ Create `.copilot-command-ring.local.json` in the repo root (git-ignored):
 
 ```json
 {
-  "serial_port": "COM7",
   "baud": 115200,
   "brightness": 0.04,
   "lock_timeout": 1.0,
   "idle_mode": "off",
   "device_match": {
-    "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial"]
+    "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial", "Seeed"]
   }
 }
 ```
 
-If no port is configured, the host bridge auto-detects by matching USB device descriptions.
+The serial port is auto-detected by default. Add `"serial_port": "COM7"` only if auto-detection doesn't find your board.
 
 ## Hook Event Mapping
 
@@ -165,8 +177,10 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 | `agentStop` | `agent_idle` | breathing | dim white |
 | `preCompact` | `compacting` | wipe | cyan |
 | `errorOccurred` | `error` | flash | red |
-| `notification` | `notify` | flash | white |
+| `notification` | `notify` | flash (suppressed while busy) | white |
 | `sessionEnd` | `off` | off | — |
+
+When a `notification` arrives while the ring is already showing `working`, `subagent_active`, or `compacting`, the firmware keeps the busy animation instead of interrupting it with a white flash.
 
 The serial protocol uses JSON Lines — one JSON object per line over USB serial. See [`docs/hook-events.md`](docs/hook-events.md) for the full protocol specification.
 
@@ -176,11 +190,15 @@ The serial protocol uses JSON Lines — one JSON object per line over USB serial
 copilot-status-ring/
 ├─ .github/hooks/                    # Copilot CLI hook config + wrapper scripts
 ├─ host/copilot_command_ring/        # Python host bridge
+│  ├─ cli.py                         #   CLI entry point (setup, deploy, hook)
+│  ├─ deploy.py                      #   Hook deployment to target repos
 │  ├─ config.py                      #   Configuration loading
 │  ├─ events.py                      #   Event normalization
 │  ├─ protocol.py                    #   Serial protocol encoding
 │  ├─ sender.py                      #   Serial port communication
-│  ├─ hook_main.py                   #   CLI entry point
+│  ├─ detect_ports.py                #   Serial port auto-detection
+│  ├─ serial_lock.py                 #   Multi-session serial lock
+│  ├─ hook_main.py                   #   Hook event handler
 │  └─ simulate.py                    #   Simulation mode
 ├─ firmware/circuitpython/           # CircuitPython firmware (boot.py, code.py)
 ├─ firmware/arduino/                 # Arduino firmware (.ino sketch)
@@ -198,15 +216,19 @@ copilot-status-ring/
 **macOS / Linux:**
 
 ```bash
-pip3 install -r requirements.txt
-pip3 install ".[dev]"
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-py -3 -m pip install -r requirements.txt
-py -3 -m pip install ".[dev]"
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
 ```
 
 ### Run tests
@@ -220,10 +242,10 @@ python3 -m pytest tests/ -v
 **Windows (PowerShell):**
 
 ```powershell
-py -3 -m pytest tests/ -v
+python -m pytest tests/ -v
 ```
 
-### Lint and type-check
+### Lint
 
 **macOS / Linux:**
 
@@ -234,7 +256,7 @@ python3 -m ruff check host/ tests/
 **Windows (PowerShell):**
 
 ```powershell
-py -3 -m ruff check host/ tests/
+python -m ruff check host/ tests/
 ```
 
 ### Simulate hook events (no hardware needed)
@@ -248,7 +270,7 @@ python3 -m copilot_command_ring.simulate --dry-run
 **Windows (PowerShell):**
 
 ```powershell
-py -3 -m copilot_command_ring.simulate --dry-run
+python -m copilot_command_ring.simulate --dry-run
 ```
 
 ### Validate platform setup
@@ -274,9 +296,9 @@ Common issues and solutions are documented in [`docs/troubleshooting.md`](docs/t
 Quick checks:
 
 - **Ring not responding?** Verify the serial port with `COPILOT_RING_LOG_LEVEL=DEBUG` and check the connection.
-- **No hooks firing?** Ensure you are running Copilot CLI from within this repository — hooks load from `.github/hooks/`.
+- **No hooks firing?** Run `copilot-command-ring setup` (global, recommended) or `copilot-command-ring deploy <path>` (per-repo). See [Quick Start](#quick-start) step 3.
 - **Permission errors on serial port?** On Linux, add your user to the `dialout` group. On macOS, check `/dev/tty.*` permissions.
-- **Multiple sessions?** Concurrent Copilot CLI sessions on the same machine are safe — a file lock prevents serial corruption. The ring shows a blended "last writer wins" view.
+- **Multiple sessions?** Concurrent Copilot CLI sessions on the same machine are fully supported. The firmware tracks each session independently and displays the highest-priority state across all active sessions. When one session ends, the ring seamlessly continues showing the remaining sessions' state. A file lock prevents serial corruption.
 
 See also: [`docs/setup-windows.md`](docs/setup-windows.md) · [`docs/setup-macos.md`](docs/setup-macos.md) · [`docs/setup-linux.md`](docs/setup-linux.md)
 

@@ -90,8 +90,11 @@ Adafruit_NeoPixel ring(PIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 static State currentState  = ST_OFF;
 static State prevState     = ST_OFF;
+static State savedState    = ST_OFF;
 static unsigned long stateStartMs = 0;
 static int animStep        = 0;
+static unsigned long savedStartMs = 0;
+static int savedStep       = 0;
 
 static char serialBuf[SERIAL_BUF_SIZE];
 static uint8_t serialIdx   = 0;
@@ -119,16 +122,42 @@ static uint32_t scaleColor(uint32_t color, float factor) {
 }
 
 // ---------------------------------------------------------------------------
+// Transient state check
+// ---------------------------------------------------------------------------
+
+static bool isTransient(State s) {
+  return (s == ST_TOOL_OK || s == ST_TOOL_ERROR || s == ST_ERROR || s == ST_NOTIFY);
+}
+
+// ---------------------------------------------------------------------------
 // State parsing
 // ---------------------------------------------------------------------------
 
 static void setState(State s) {
-  if (s != currentState) {
-    prevState    = currentState;
+  if (s == currentState) return;
+
+  // Returning from a transient flash to the same persistent state —
+  // restore saved animation timing so the spinner continues seamlessly.
+  if (isTransient(currentState) && s == savedState) {
+    prevState    = s;
     currentState = s;
-    stateStartMs = millis();
-    animStep     = 0;
+    stateStartMs = savedStartMs;
+    animStep     = savedStep;
+    return;
   }
+
+  // Entering a transient — save current timing only from a non-transient
+  // state so nested transients don't overwrite the original timing.
+  if (isTransient(s) && !isTransient(currentState)) {
+    savedState   = currentState;
+    savedStartMs = stateStartMs;
+    savedStep    = animStep;
+  }
+
+  prevState    = currentState;
+  currentState = s;
+  stateStartMs = millis();
+  animStep     = 0;
 }
 
 static State stateFromStr(const char* s) {

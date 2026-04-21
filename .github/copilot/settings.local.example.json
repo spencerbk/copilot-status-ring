@@ -1,9 +1,0 @@
-{
-  "$schema": "https://json.schemastore.org/github-copilot-settings",
-  "_comment": "Copy this file to settings.local.json and edit for your setup. Do not commit settings.local.json.",
-  "copilot-command-ring": {
-    "serial_port": "COM7",
-    "baud": 115200,
-    "brightness": 0.04
-  }
-}

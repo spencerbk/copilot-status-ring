@@ -16,7 +16,11 @@ HOST_DIR = REPO_ROOT / "host"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
-def _run_hook(event_name: str, payload: dict | None = None) -> subprocess.CompletedProcess:
+def _run_hook(
+    event_name: str,
+    payload: dict | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
     """Invoke hook_main as a subprocess, returning the result."""
     env = {
         "PYTHONPATH": str(HOST_DIR),
@@ -30,6 +34,8 @@ def _run_hook(event_name: str, payload: dict | None = None) -> subprocess.Comple
     for key in ("PATH", "SYSTEMROOT", "TEMP", "TMP", "HOMEDRIVE", "HOMEPATH"):
         if key in os.environ:
             env[key] = os.environ[key]
+    if extra_env:
+        env.update(extra_env)
 
     stdin_data = json.dumps(payload or {})
     return subprocess.run(
@@ -77,6 +83,10 @@ class TestHookMainIntegration:
             ("agentStop", {"stopReason": "end_turn"}),
             ("preCompact", {"trigger": "auto"}),
             ("errorOccurred", {"error": {"name": "Err", "message": "msg"}, "recoverable": True}),
+            (
+                "notification",
+                {"notification_type": "info", "message": "Agent completed background task"},
+            ),
         ]
         for event_name, payload in events:
             result = _run_hook(event_name, payload)
@@ -133,6 +143,7 @@ class TestHookMainIntegration:
             "agentStop.json": "agentStop",
             "preCompact.json": "preCompact",
             "errorOccurred.json": "errorOccurred",
+            "notification.json": "notification",
         }
         for filename, event_name in fixture_map.items():
             fixture_path = FIXTURES / filename
@@ -142,3 +153,29 @@ class TestHookMainIntegration:
             result = _run_hook(event_name, payload)
             assert result.returncode == 0, f"{filename}: exit {result.returncode}"
             assert result.stdout == "", f"{filename}: stdout={result.stdout!r}"
+
+    def test_notification_dry_run_logs_notify_state(self) -> None:
+        result = _run_hook(
+            "notification",
+            {"notification_type": "info", "message": "Agent completed background task"},
+        )
+        assert result.returncode == 0
+        assert result.stdout == ""
+        assert '"state": "notify"' in result.stderr or '"state":"notify"' in result.stderr
+
+    def test_session_field_in_dry_run_output(self) -> None:
+        """When COPILOT_RING_CLI_PID is set, the session field appears in output."""
+        result = _run_hook(
+            "preToolUse",
+            {"toolName": "edit"},
+            extra_env={"COPILOT_RING_CLI_PID": "12345"},
+        )
+        assert result.returncode == 0
+        assert result.stdout == ""
+        assert '"session": "12345"' in result.stderr or '"session":"12345"' in result.stderr
+
+    def test_no_session_field_without_env(self) -> None:
+        """Without COPILOT_RING_CLI_PID, no session field in output."""
+        result = _run_hook("preToolUse", {"toolName": "edit"})
+        assert result.returncode == 0
+        assert "session" not in result.stderr

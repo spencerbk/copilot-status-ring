@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "copilot-command-ring"
@@ -17,6 +17,12 @@ dev = [
     "pytest>=7.0",
     "ruff>=0.4",
 ]
+
+[project.scripts]
+copilot-command-ring = "copilot_command_ring.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["host"]
 
 [tool.ruff]
 target-version = "py39"

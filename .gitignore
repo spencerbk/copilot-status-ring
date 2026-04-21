@@ -16,6 +16,9 @@ build/
 .vscode/
 .idea/
 
+# Copilot/agent config (managed elsewhere)
+.github/
+
 # OS
 .DS_Store
 Thumbs.db

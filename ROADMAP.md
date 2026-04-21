@@ -6,12 +6,12 @@ All v1 deliverables are complete.
 
 | Area | Status | Details |
 |------|--------|---------|
-| **Host bridge** | ✅ Done | Python bridge with event normalization, serial sender, config loading, dry-run mode |
-| **Hook integration** | ✅ Done | Repo-scoped `.github/hooks/` config, `run-hook.ps1` (Windows), `run-hook.sh` (macOS/Linux) |
-| **Serial protocol** | ✅ Done | Line-delimited JSON over USB serial, shared by both firmware targets |
-| **CircuitPython firmware** | ✅ Done | State machine with 8 animation modes on 24-pixel NeoPixel ring (CircuitPython 10.x) |
-| **Arduino firmware** | ✅ Done | Semantically equivalent animations using Adafruit_NeoPixel |
-| **Host tests** | ✅ Done | Unit + integration coverage for event normalization, protocol, config, and port detection |
+| **Host bridge** | ✅ Done | pip-installable Python package with CLI (`setup`, `deploy`, `hook`), event normalization, serial sender, auto-detection, config loading, dry-run mode |
+| **Hook integration** | ✅ Done | Global hooks via `copilot-command-ring setup` (one-time, all repos) + per-repo `.github/hooks/` via `copilot-command-ring deploy` |
+| **Serial protocol** | ✅ Done | Line-delimited JSON over USB serial with optional `session` field for multi-session arbitration |
+| **CircuitPython firmware** | ✅ Done | State machine with 8 animation modes, multi-session tracking, board auto-detection, stale session pruning (CircuitPython 10.x) |
+| **Arduino firmware** | ✅ Done | Semantically equivalent animations using Adafruit_NeoPixel (single-session mode) |
+| **Host tests** | ✅ Done | Unit + integration coverage for event normalization, protocol, config, port detection, and deployment |
 | **Documentation** | ✅ Done | Hardware wiring guide, OS setup docs (Windows/macOS/Linux), troubleshooting, hook event reference |
 | **Cross-platform support** | ✅ Done | Windows (primary), macOS, Linux |
 
@@ -40,6 +40,10 @@ User-facing personalization without changing code.
 
 Replace direct hook-to-serial calls with a persistent host process.
 
+> **Note:** Multi-session state arbitration was delivered without a daemon — the firmware
+> now tracks sessions and resolves priorities on-device. A daemon would still provide
+> benefits for connection persistence and desktop integration.
+
 | Item | Description |
 |------|-------------|
 | Background host daemon | Long-running process that holds the serial connection open; hooks send messages to the daemon instead of opening/closing serial per event |
@@ -64,10 +68,12 @@ Extend beyond a single NeoPixel ring.
 
 Make installation easier for end users.
 
-| Item | Description |
-|------|-------------|
-| pip-installable package | Publish to PyPI so users can `pip install copilot-command-ring` |
-| Prebuilt standalone binaries | Single-file executables for Windows, macOS, and Linux (no Python install required) |
+| Item | Status | Description |
+|------|--------|-------------|
+| pip install from Git | ✅ Done | `pip install git+https://github.com/spencerbk/copilot-status-ring.git` installs the host bridge and CLI |
+| Global hooks CLI | ✅ Done | `copilot-command-ring setup` deploys hooks to `~/.copilot/hooks/` (one-time, all repos) |
+| PyPI publishing | Planned | Publish to PyPI so users can `pip install copilot-command-ring` without the Git URL |
+| Prebuilt standalone binaries | Planned | Single-file executables for Windows, macOS, and Linux (no Python install required) |
 
 ---
 

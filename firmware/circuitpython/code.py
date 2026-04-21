@@ -13,14 +13,24 @@ import time
 
 import board  # type: ignore[reportMissingImports]
 import neopixel  # type: ignore[reportMissingImports]
+import supervisor  # type: ignore[reportMissingImports]
 import usb_cdc  # type: ignore[reportMissingImports]
 
+# Optional watchdog — not all boards support it
+try:
+    import microcontroller  # type: ignore[reportMissingImports]
+    from watchdog import WatchDogMode  # type: ignore[reportMissingImports]
+
+    _WATCHDOG = microcontroller.watchdog
+    _WATCHDOG_RESET = WatchDogMode.RESET
+except ImportError:
+    _WATCHDOG = None
+    _WATCHDOG_RESET = None
+
 # ── Configuration ──────────────────────────────────────────────────────────
-# Data pin for the NeoPixel ring — change to match your board:
-#   Feather RP2040 / XIAO RP2350 / XIAO ESP32-C6: board.D6 (default)
-#   Raspberry Pi Pico / Pico W:                    board.GP6
-#   QT Py RP2040 / QT Py ESP32-S2 / QT Py ESP32-S3: board.A0
-NEOPIXEL_PIN = board.GP6
+# Override: set to a specific pin (e.g., board.A0) to skip auto-detection.
+# Leave as None to let the firmware detect the correct pin for your board.
+NEOPIXEL_PIN = None
 NUM_PIXELS = 24
 BRIGHTNESS = 0.04  # keep low to avoid blinding / power issues
 BRIGHTNESS_BOOST = 0.02  # extra brightness for dim states (breathing)
@@ -28,6 +38,32 @@ PIXEL_ORDER = neopixel.GRB
 SPINNER_WIDTH = 6  # number of LEDs in the spinner segment
 LOOP_DELAY = 0.02  # ~50 fps
 SERIAL_BUF_MAX = 512  # discard buffer if no newline within this many bytes
+WATCHDOG_TIMEOUT = 8  # keep longer than normal render loop latency
+MAX_CONSECUTIVE_ERRORS = 10  # force reload after this many consecutive loop failures
+
+# ── Board auto-detection ───────────────────────────────────────────────────
+
+def _detect_neopixel_pin():
+    """Auto-detect the NeoPixel data pin from board identity.
+
+    Pin families:
+      Pico / Pico W:        board.GP6
+      QT Py (all variants):  board.A0  (no D6 on QT Py boards)
+      Feather / XIAO / most: board.D6
+    """
+    bid = getattr(board, "board_id", "")
+    if "pico" in bid:
+        return board.GP6
+    if "qtpy" in bid or "qt_py" in bid:
+        return board.A0
+    if hasattr(board, "D6"):
+        return board.D6
+    # Fallback for unlisted boards
+    for name in ("GP6", "A0"):
+        if hasattr(board, name):
+            return getattr(board, name)
+    raise RuntimeError("Cannot detect NeoPixel pin — set NEOPIXEL_PIN in code.py")
+
 
 # ── Color palette ──────────────────────────────────────────────────────────
 COLOR_OFF = (0, 0, 0)
@@ -70,6 +106,37 @@ TRANSIENT_STATES = {"tool_ok", "tool_error", "error", "notify"}
 # States that get a brightness boost for visibility
 BOOSTED_STATES = {"agent_idle"}
 
+# Suppress white notification flashes while a clearly busy state is already visible.
+NOTIFY_SUPPRESSED_WHILE_BUSY = {"working", "subagent_active", "compacting"}
+
+# ── Multi-session arbitration ──────────────────────────────────────────────
+# Priority order: higher value = the ring should prefer this state when
+# multiple sessions are active.  Only persistent (non-transient) states are
+# tracked per-session; transient flashes are shown on top then reverted.
+STATE_PRIORITY = {
+    "off": 0,
+    "idle": 1,
+    "agent_idle": 2,
+    "session_start": 3,
+    "prompt_submitted": 4,
+    "compacting": 5,
+    "subagent_active": 6,
+    "working": 7,
+    "awaiting_permission": 8,
+    "error": 9,
+}
+MAX_SESSIONS = 8
+STALE_TIMEOUT = 300  # seconds before an idle session is pruned
+
+
+def should_apply_transient(persistent_state, transient):
+    """Return whether *transient* should overlay *persistent_state*."""
+    if transient is None:
+        return False
+    if transient != "notify":
+        return True
+    return persistent_state not in NOTIFY_SUPPRESSED_WHILE_BUSY
+
 
 # ── Animation engine ───────────────────────────────────────────────────────
 
@@ -83,21 +150,50 @@ class StatusRing:
         self.prev_state = "off"
         self.state_start = 0.0
         self.step = 0
+        self._saved_state = "off"
+        self._saved_start = 0.0
+        self._saved_step = 0
 
     def set_state(self, new_state):
-        """Transition to *new_state*, recording the previous state."""
+        """Transition to *new_state*, recording the previous state.
+
+        When returning from a transient flash to the same persistent
+        state, saved animation timing is restored so continuous
+        animations (e.g. spinner) resume without a visible restart.
+        """
         if new_state not in STATE_MAP:
             new_state = "off"
-        if new_state != self.state:
-            self.prev_state = self.state
+        if new_state == self.state:
+            return
+
+        # Returning from a transient flash to the same persistent state —
+        # restore saved animation timing so the spinner continues seamlessly.
+        if self.state in TRANSIENT_STATES and new_state == self._saved_state:
+            self.prev_state = new_state
             self.state = new_state
-            self.state_start = time.monotonic()
-            self.step = 0
-            # Boost brightness for dim states, restore for others
+            self.state_start = self._saved_start
+            self.step = self._saved_step
             if new_state in BOOSTED_STATES:
                 self.pixels.brightness = BRIGHTNESS + BRIGHTNESS_BOOST
-            elif self.prev_state in BOOSTED_STATES:
-                self.pixels.brightness = BRIGHTNESS
+            return
+
+        # Entering a transient — save current timing only from a
+        # non-transient state so nested transients don't overwrite the
+        # original persistent animation timing.
+        if new_state in TRANSIENT_STATES and self.state not in TRANSIENT_STATES:
+            self._saved_state = self.state
+            self._saved_start = self.state_start
+            self._saved_step = self.step
+
+        self.prev_state = self.state
+        self.state = new_state
+        self.state_start = time.monotonic()
+        self.step = 0
+        # Boost brightness for dim states, restore for others
+        if new_state in BOOSTED_STATES:
+            self.pixels.brightness = BRIGHTNESS + BRIGHTNESS_BOOST
+        elif self.prev_state in BOOSTED_STATES:
+            self.pixels.brightness = BRIGHTNESS
 
     # ── tick dispatcher ────────────────────────────────────────────────
 
@@ -139,12 +235,18 @@ class StatusRing:
 
     def _revert(self):
         """Return to the previous state (used by flash/transient anims)."""
-        target = self.prev_state
+        target = self._saved_state
         if target in TRANSIENT_STATES:
             target = "off"
+        self.prev_state = target
         self.state = target
-        self.state_start = time.monotonic()
-        self.step = 0
+        # Restore saved timing so continuous animations resume seamlessly
+        if target != "off":
+            self.state_start = self._saved_start
+            self.step = self._saved_step
+        else:
+            self.state_start = time.monotonic()
+            self.step = 0
         # Re-apply brightness boost if reverting to a boosted state
         if target in BOOSTED_STATES:
             self.pixels.brightness = BRIGHTNESS + BRIGHTNESS_BOOST
@@ -210,48 +312,183 @@ class StatusRing:
         self.pixels.fill((r, g, b))
 
 
+# ── Multi-session tracker ──────────────────────────────────────────────────
+
+class SessionTracker:
+    """Tracks active Copilot CLI sessions and resolves the winning state.
+
+    Each session is identified by a string ID (typically the CLI process PID).
+    The tracker stores each session's last *persistent* state and resolves
+    priority across all live sessions.  Transient states (flashes) are
+    recorded as pending but do not overwrite the persistent state.
+    """
+
+    def __init__(self):
+        self._sessions = {}   # {session_id: [persistent_state, last_seen]}
+        self._pending_transient = None
+
+    @property
+    def active_count(self):
+        return len(self._sessions)
+
+    def update(self, session_id, state, now):
+        """Register or update a session's state.
+
+        Transient states are stored as a pending flash without changing
+        the session's persistent state.  An ``"off"`` state removes
+        the session entirely (session ended).
+        """
+        if state in TRANSIENT_STATES:
+            self._pending_transient = state
+            # Touch timestamp so the session isn't pruned while active
+            if session_id in self._sessions:
+                self._sessions[session_id][1] = now
+            return
+
+        if state == "off":
+            self._sessions.pop(session_id, None)
+        else:
+            if session_id in self._sessions:
+                entry = self._sessions[session_id]
+                entry[0] = state
+                entry[1] = now
+            else:
+                # Evict oldest if at capacity
+                if len(self._sessions) >= MAX_SESSIONS:
+                    oldest_id = None
+                    oldest_ts = now
+                    for sid, entry in self._sessions.items():
+                        if entry[1] < oldest_ts:
+                            oldest_ts = entry[1]
+                            oldest_id = sid
+                    if oldest_id is not None:
+                        del self._sessions[oldest_id]
+                self._sessions[session_id] = [state, now]
+
+    def resolve(self, now):
+        """Return ``(winning_persistent_state, pending_transient_or_None)``.
+
+        Prunes stale sessions (no messages within ``STALE_TIMEOUT``),
+        then picks the highest-priority persistent state.
+        """
+        # Prune stale sessions
+        for sid in list(self._sessions):
+            if now - self._sessions[sid][1] > STALE_TIMEOUT:
+                del self._sessions[sid]
+
+        transient = self._pending_transient
+        self._pending_transient = None
+
+        if not self._sessions:
+            return "off", transient
+
+        best_state = "off"
+        best_priority = -1
+        best_time = 0.0
+        for entry in self._sessions.values():
+            p = STATE_PRIORITY.get(entry[0], 0)
+            if p > best_priority or (p == best_priority and entry[1] > best_time):
+                best_priority = p
+                best_state = entry[0]
+                best_time = entry[1]
+
+        return best_state, transient
+
+
 # ── Serial reader ──────────────────────────────────────────────────────────
 
 serial = usb_cdc.data
-_serial_buf = ""
+_serial_buf = bytearray()
+_was_connected = True
 
 
-def read_serial():
-    """Read available bytes and return a complete line, or None.
+def log_exception(context, exc):
+    """Print a concise error to the CircuitPython console."""
+    print(context, type(exc).__name__, exc)
 
-    Accumulates partial reads in *_serial_buf* and splits on newlines.
-    Only the first complete line per call is returned; remaining data
-    stays in the buffer for the next call.
+
+def read_serial(tracker):
+    """Read available bytes and process messages through the session tracker.
+
+    Drains all complete lines from the buffer each call so that the
+    buffer cannot grow without bound under sustained traffic.
+
+    For session-tagged messages, updates the tracker.  For messages
+    without a session field, records the latest bare state for backward-
+    compatible direct ``set_state`` handling.
+
+    Returns ``(has_session_msgs, latest_bare_state, parsed_any)``.
     """
-    global _serial_buf  # noqa: PLW0603 — intentional module-level buffer
+    global _serial_buf, _was_connected  # noqa: PLW0603
 
     if serial is None:
-        return None
+        return False, None, False
+
+    # Track USB connection state — only clear buffer on reconnect
+    # (a new physical USB connection may carry stale partial data).
+    # Do NOT clear or skip reading when disconnected: each hook
+    # invocation opens → writes → closes the port quickly, so the
+    # MCU frequently sees connected=False while valid data sits in
+    # the USB hardware buffer waiting to be read.
+    connected = getattr(serial, "connected", True)
+    if connected and not _was_connected:
+        # Reconnect: discard partial leftovers from old connection
+        _serial_buf = bytearray()
+    _was_connected = connected
+
     try:
         if serial.in_waiting:
             raw = serial.read(serial.in_waiting)
             if raw:
-                _serial_buf += raw.decode("utf-8", "replace")
-    except Exception:
+                _serial_buf.extend(raw)
+    except Exception as exc:
         # Serial errors should never crash the firmware
-        return None
+        log_exception("serial read error", exc)
+        return False, None, False
 
-    newline = _serial_buf.find("\n")
-    if newline < 0:
-        # Prevent unbounded buffer growth from malformed data
+    # Prevent unbounded buffer growth from malformed data (no newlines)
+    if len(_serial_buf) > SERIAL_BUF_MAX:
+        # Keep only data after the last newline, or discard everything
+        last_nl = _serial_buf.rfind(b"\n")
+        _serial_buf = bytearray(_serial_buf[last_nl + 1:]) if last_nl >= 0 else bytearray()
         if len(_serial_buf) > SERIAL_BUF_MAX:
-            _serial_buf = ""
-        return None
+            _serial_buf = bytearray()
 
-    line = _serial_buf[:newline].strip()
-    _serial_buf = _serial_buf[newline + 1:]
-    return line if line else None
+    # Drain all complete lines
+    has_session_msgs = False
+    latest_bare_state = None
+    parsed_line = False
+    now = time.monotonic()
+    while True:
+        newline = _serial_buf.find(b"\n")
+        if newline < 0:
+            break
+        parsed_line = True
+        line_bytes = bytes(_serial_buf[:newline])
+        _serial_buf = bytearray(_serial_buf[newline + 1:])
+        try:
+            line = line_bytes.decode("utf-8", "replace").strip()
+            if line:
+                msg = json.loads(line)
+                state = msg.get("state", "off")
+                session_id = msg.get("session")
+                if session_id is not None:
+                    has_session_msgs = True
+                    tracker.update(str(session_id), state, now)
+                else:
+                    latest_bare_state = state
+        except (ValueError, KeyError, UnicodeError):
+            pass  # discard malformed lines
+
+    return has_session_msgs, latest_bare_state, parsed_line
 
 
 # ── Initialisation ─────────────────────────────────────────────────────────
 
+_pin = NEOPIXEL_PIN or _detect_neopixel_pin()
+
 pixels = neopixel.NeoPixel(
-    NEOPIXEL_PIN,
+    _pin,
     NUM_PIXELS,
     brightness=BRIGHTNESS,
     auto_write=False,
@@ -268,26 +505,54 @@ pixels.fill(COLOR_OFF)
 pixels.show()
 
 ring = StatusRing(pixels, NUM_PIXELS)
-_gc_counter = 0
+tracker = SessionTracker()
+_consecutive_errors = 0
+
+# Enable hardware watchdog for automatic recovery from hangs
+if _WATCHDOG is not None and _WATCHDOG_RESET is not None:
+    _WATCHDOG.timeout = WATCHDOG_TIMEOUT
+    _WATCHDOG.mode = _WATCHDOG_RESET
 
 # ── Main loop ──────────────────────────────────────────────────────────────
 
 while True:
-    line = read_serial()
-    if line:
-        try:
-            msg = json.loads(line)
-            state = msg.get("state", "off")
-            ring.set_state(state)
-        except (ValueError, KeyError):
-            pass  # discard malformed JSON
+    try:
+        now = time.monotonic()
+        has_sessions, bare_state, parsed_line = read_serial(tracker)
 
-    ring.tick(time.monotonic())
+        # Resolve session priority whenever sessions exist — not only
+        # when a new message arrived.  This ensures stale-session pruning
+        # runs even if no further messages come (e.g. lost "off" event).
+        if has_sessions or tracker.active_count > 0:
+            winning, transient = tracker.resolve(now)
+            ring.set_state(winning)
+            if should_apply_transient(winning, transient):
+                ring.set_state(transient)
+        elif bare_state is not None:
+            ring.set_state(bare_state)
 
-    # Periodic GC to reclaim memory from parsed JSON dicts
-    _gc_counter += 1
-    if _gc_counter >= 50:  # ~once per second at 50 fps
+        ring.tick(now)
+        if parsed_line:
+            gc.collect()
+        _consecutive_errors = 0
+    except MemoryError as exc:
+        # Critical: free memory and reset to safe state
+        log_exception("main loop error", exc)
         gc.collect()
-        _gc_counter = 0
+        ring.pixels.fill(COLOR_OFF)
+        ring.pixels.show()
+        ring.set_state("off")
+        _consecutive_errors += 1
+    except Exception as exc:
+        log_exception("main loop error", exc)
+        _consecutive_errors += 1
+
+    # Force full restart if the loop is persistently failing
+    if _consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+        supervisor.reload()
+
+    # Feed the watchdog to prevent reset
+    if _WATCHDOG is not None:
+        _WATCHDOG.feed()
 
     time.sleep(LOOP_DELAY)

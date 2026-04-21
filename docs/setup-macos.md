@@ -22,16 +22,22 @@ Or download from [python.org/downloads](https://www.python.org/downloads/).
 
 ---
 
-## 2. Install pyserial
+## 2. Install the host bridge
+
+> **Recommended:** Create a virtual environment first:
+>
+> ```bash
+> python3 -m venv .venv && source .venv/bin/activate
+> ```
 
 ```bash
-pip3 install pyserial
+pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
 Verify:
 
 ```bash
-python3 -c "import serial; print(serial.VERSION)"
+copilot-command-ring --help
 ```
 
 ---
@@ -59,6 +65,10 @@ CircuitPython boards typically create **two** serial devices — one for the REP
 
 ## 4. Configure the serial port
 
+The host bridge auto-detects your board by scanning for USB serial devices matching known descriptions. On boards with dual CDC channels (like CircuitPython boards), it automatically selects the correct data channel. **Most users need no port configuration.**
+
+If auto-detection doesn't find your board, you can set the port manually:
+
 **Option A — environment variable:**
 
 ```bash
@@ -73,7 +83,7 @@ echo 'export COPILOT_RING_PORT="/dev/cu.usbmodem14201"' >> ~/.zshrc
 
 **Option B — config file:**
 
-Create `.copilot-command-ring.local.json` in your project root:
+Create `.copilot-command-ring.local.json` in your project root and add a `serial_port` field:
 
 ```json
 {
@@ -81,10 +91,6 @@ Create `.copilot-command-ring.local.json` in your project root:
   "brightness": 0.04
 }
 ```
-
-**Option C — auto-detect:**
-
-If you don't set a port, the host bridge will try to auto-detect your board by scanning for serial devices with descriptions containing "Copilot Command Ring", "CircuitPython", "Arduino", or "USB Serial".
 
 ---
 
@@ -108,15 +114,33 @@ macOS may require granting your terminal app permission to access USB devices:
    ```bash
    cp firmware/circuitpython/boot.py /Volumes/CIRCUITPY/boot.py
    cp firmware/circuitpython/code.py /Volumes/CIRCUITPY/code.py
-   cp -r firmware/circuitpython/lib/* /Volumes/CIRCUITPY/lib/
    ```
-6. The board reboots automatically.
+6. Install `neopixel.mpy` from the [Adafruit CircuitPython Bundle](https://circuitpython.org/libraries) into `CIRCUITPY/lib/`.
+7. The board reboots automatically.
 
 > **Note:** After copying `boot.py`, unplug and replug the board so the USB CDC data channel activates and the device appears as "Copilot Command Ring". The device path may change.
 
 ---
 
-## 7. Test with simulation
+## 7. Activate the ring
+
+**Option A — Global setup (recommended, one-time):**
+
+```bash
+copilot-command-ring setup
+```
+
+This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically.
+
+**Option B — Per-repo deploy:**
+
+```bash
+copilot-command-ring deploy ~/code/my-project
+```
+
+---
+
+## 8. Test with simulation
 
 Run the dry-run simulator:
 
@@ -140,9 +164,9 @@ python3 -m copilot_command_ring.simulate
 
 ---
 
-## 8. Verify hooks
+## 9. Verify hooks
 
-1. Ensure `.github/hooks/copilot-command-ring.json` exists in your repo.
+1. Ensure you ran `copilot-command-ring setup` (global) or `copilot-command-ring deploy <path>` (per-repo).
 2. Open Copilot CLI in a terminal inside the repository.
 3. Start a session — the ring should light up.
 

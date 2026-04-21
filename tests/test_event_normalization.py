@@ -226,6 +226,46 @@ def test_normalize_unknown_event_falls_back_to_idle():
     assert result["state"] == "idle"
 
 
+# ── Cross-cutting: session field ─────────────────────────────────────────
+
+
+def test_normalize_includes_session_when_env_set(monkeypatch: pytest.MonkeyPatch):
+    """When COPILOT_RING_CLI_PID is set, every message includes a session field."""
+    monkeypatch.setenv("COPILOT_RING_CLI_PID", "42")
+    result = normalize_event("preToolUse", {"toolName": "edit"})
+    assert result["session"] == "42"
+
+
+def test_normalize_omits_session_when_env_unset(monkeypatch: pytest.MonkeyPatch):
+    """When COPILOT_RING_CLI_PID is not set, no session field appears."""
+    monkeypatch.delenv("COPILOT_RING_CLI_PID", raising=False)
+    result = normalize_event("preToolUse", {"toolName": "edit"})
+    assert "session" not in result
+
+
+def test_normalize_session_field_across_all_events(monkeypatch: pytest.MonkeyPatch):
+    """Session field is added to every event type when the env var is present."""
+    monkeypatch.setenv("COPILOT_RING_CLI_PID", "9999")
+    events = [
+        "sessionStart",
+        "sessionEnd",
+        "userPromptSubmitted",
+        "preToolUse",
+        "postToolUse",
+        "postToolUseFailure",
+        "permissionRequest",
+        "subagentStart",
+        "subagentStop",
+        "agentStop",
+        "preCompact",
+        "errorOccurred",
+        "notification",
+    ]
+    for event in events:
+        result = normalize_event(event, {})
+        assert result.get("session") == "9999", f"{event}: missing session field"
+
+
 # ── Cross-cutting: no None values ────────────────────────────────────────
 
 

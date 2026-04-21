@@ -37,9 +37,11 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `subagentStop` | `idle` | Return to idle | — | `agent` |
 | `agentStop` | `agent_idle` | Dim breathing | White (dim) | `reason` |
 | `preCompact` | `compacting` | Wipe | Cyan | — |
-| `errorOccurred` | `error` | Flash (long) | Red | `error`, `recoverable` |
+| `errorOccurred` | `error` | Flash (long) | Red | `error`, `message`, `recoverable`, `errorContext` |
 | `sessionEnd` | `off` | Off | — | `reason` |
-| `notification` | `notify` | Flash | White | `notification_type`, `message` |
+| `notification` | `notify` | Flash (suppressed while busy) | White | `notification_type`, `message` |
+
+When a `notification` arrives while the winning persistent state is `working`, `subagent_active`, or `compacting`, the firmware suppresses the white flash and leaves the busy animation running.
 
 ---
 
@@ -108,7 +110,7 @@ These are the exact JSON Lines the host bridge sends over serial. Each is a sing
 ### Errors
 
 ```json
-{"event":"errorOccurred","state":"error","error":"model_error","recoverable":true}
+{"event":"errorOccurred","state":"error","error":"RateLimitError","message":"API rate limit exceeded","recoverable":true,"errorContext":"model_request"}
 ```
 
 ### Notifications
@@ -116,6 +118,8 @@ These are the exact JSON Lines the host bridge sends over serial. Each is a sing
 ```json
 {"event":"notification","state":"notify","notification_type":"info","message":"Background task complete"}
 ```
+
+The host still sends the normalized `notify` message above. Busy-state suppression happens in firmware so idle sessions can still show the white notification flash.
 
 ---
 
@@ -132,17 +136,17 @@ These are the exact JSON Lines the host bridge sends over serial. Each is a sing
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `session` | string | Copilot CLI session identifier (PID). Enables multi-session arbitration on firmware. |
 | `tool` | string | Tool name (e.g. `bash`, `edit`, `grep`) |
 | `result` | string | Tool execution result |
 | `agent` | string | Sub-agent name |
 | `trigger` | string | What triggered the event |
 | `reason` | string | Reason for state change |
 | `error` | string | Error description |
+| `errorContext` | string | Error context identifier |
 | `recoverable` | boolean | Whether the error is recoverable |
 | `notification_type` | string | Type of notification |
 | `message` | string | Notification message |
-| `sessionId` | string | Session identifier |
-| `timestamp` | string | ISO 8601 timestamp |
 
 ---
 
@@ -169,3 +173,4 @@ This sends diagnostic output to **stderr only**.
 3. Unknown `state` values must not crash firmware — fall back to idle/off.
 4. The host must exit quickly (target < 1 second total hook runtime).
 5. If no serial device is found, the hook exits silently — it must never block Copilot CLI.
+6. When the `session` field is present, firmware uses it for multi-session state arbitration. Messages without `session` are handled with legacy single-session behavior.
