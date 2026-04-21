@@ -168,7 +168,14 @@ class StatusRing:
 
         # Returning from a transient flash to the same persistent state —
         # restore saved animation timing so the spinner continues seamlessly.
+        # Wait for the flash animation to finish before restoring, otherwise
+        # the main loop's repeated set_state(winning) calls cut it to 1 frame.
         if self.state in TRANSIENT_STATES and new_state == self._saved_state:
+            entry = STATE_MAP.get(self.state)
+            if entry is not None:
+                duration = entry[2].get("duration", 0.3)
+                if (time.monotonic() - self.state_start) < duration:
+                    return
             self.prev_state = new_state
             self.state = new_state
             self.state_start = self._saved_start
