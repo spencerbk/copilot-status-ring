@@ -56,13 +56,15 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 
 ### 1. Install the host bridge
 
-> **Recommended:** Use a virtual environment so the `copilot-command-ring` CLI lands on your PATH automatically.
+> **Recommended:** Use a virtual environment to isolate dependencies.
 >
 > **macOS / Linux:** `python3 -m venv .venv && source .venv/bin/activate`
 >
 > **Windows (PowerShell):** `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`
 >
 > Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
+>
+> The hook install commands in step 3 record the Python path so hooks work even outside the venv.
 
 **macOS / Linux:**
 
@@ -70,13 +72,13 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
-Or from a local clone:
+  Or from a local clone:
 
-```bash
-git clone https://github.com/spencerbk/copilot-status-ring.git
-cd copilot-status-ring
-pip install .
-```
+  ```bash
+  git clone https://github.com/spencerbk/copilot-status-ring.git
+  cd copilot-status-ring
+  pip install .
+  ```
 
 **Windows (PowerShell):**
 
@@ -84,13 +86,13 @@ pip install .
 pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
-Or from a local clone:
+  Or from a local clone:
 
-```powershell
-git clone https://github.com/spencerbk/copilot-status-ring.git
-cd copilot-status-ring
-pip install .
-```
+  ```powershell
+  git clone https://github.com/spencerbk/copilot-status-ring.git
+  cd copilot-status-ring
+  pip install .
+  ```
 
 ### 2. Flash firmware
 
@@ -114,7 +116,9 @@ pip install .
 copilot-command-ring setup
 ```
 
-This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. No per-repo configuration needed.
+This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. The hooks record the current Python path, so they work even when the venv isn't active.
+
+> **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring setup --force` to update the recorded Python path.
 
 **Or per-repo deploy (alternative):**
 
@@ -132,7 +136,9 @@ copilot-command-ring deploy ~/code/my-project
 copilot-command-ring deploy C:\code\my-project
 ```
 
-This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. Repeat for each repo where you want the ring active.
+This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. The deployed hooks record the current Python path. Repeat for each repo where you want the ring active.
+
+> **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring deploy <path> --force` in that repo to update the recorded Python path.
 
 > **Tip:** The deployed hooks auto-detect your board — no port configuration needed. Start a Copilot CLI session and the ring lights up.
 

@@ -39,6 +39,8 @@ Or download from [python.org/downloads](https://www.python.org/downloads/).
 > ```bash
 > python3 -m venv .venv && source .venv/bin/activate
 > ```
+>
+> The hook install commands in step 7 record the Python path so hooks work even outside the venv.
 
 ```bash
 pip install git+https://github.com/spencerbk/copilot-status-ring.git
@@ -140,13 +142,17 @@ macOS may require granting your terminal app permission to access USB devices:
 copilot-command-ring setup
 ```
 
-This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically.
+This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. The hooks record the path to your current Python, so they work even when the venv isn't active.
+
+> **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring setup --force` to update the recorded Python path.
 
 **Option B — Per-repo deploy:**
 
 ```bash
 copilot-command-ring deploy ~/code/my-project
 ```
+
+> **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring deploy ~/code/my-project --force` in that repo to update the recorded Python path.
 
 ---
 

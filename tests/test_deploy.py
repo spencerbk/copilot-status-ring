@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +14,8 @@ import pytest
 from copilot_command_ring.deploy import (
     _build_global_hook_json,
     _copilot_hooks_dir,
+    _render_hook_ps1,
+    _render_hook_sh,
     deploy_hooks,
     setup_global_hooks,
 )
@@ -64,6 +67,7 @@ class TestDeployHooks:
     def test_ps1_references_console_script(self, tmp_path: Path) -> None:
         deploy_hooks(tmp_path)
         content = (tmp_path / ".github" / "hooks" / "run-hook.ps1").read_text()
+        # Fallback chain still references the console script
         assert "copilot-command-ring" in content
         assert "hook" in content
 
@@ -113,6 +117,66 @@ class TestDeployHooks:
         deploy_hooks(tmp_path, force=True)
         hooks_dir = tmp_path / ".github" / "hooks"
         assert (hooks_dir / "copilot-command-ring.json").is_file()
+
+    def test_ps1_embeds_python_path(self, tmp_path: Path) -> None:
+        deploy_hooks(tmp_path)
+        content = (tmp_path / ".github" / "hooks" / "run-hook.ps1").read_text()
+        resolved = str(Path(sys.executable).resolve())
+        assert resolved in content
+        assert "Test-Path" in content
+
+    def test_sh_embeds_python_path(self, tmp_path: Path) -> None:
+        deploy_hooks(tmp_path)
+        content = (tmp_path / ".github" / "hooks" / "run-hook.sh").read_text()
+        resolved = str(Path(sys.executable).resolve())
+        assert resolved in content
+
+    def test_ps1_warns_when_no_runner(self, tmp_path: Path) -> None:
+        deploy_hooks(tmp_path)
+        content = (tmp_path / ".github" / "hooks" / "run-hook.ps1").read_text()
+        assert "no runner found" in content
+        assert "rerun setup/deploy" in content
+
+    def test_sh_warns_when_no_runner(self, tmp_path: Path) -> None:
+        deploy_hooks(tmp_path)
+        content = (tmp_path / ".github" / "hooks" / "run-hook.sh").read_text()
+        assert "no runner found" in content
+        assert "rerun setup/deploy" in content
+
+
+class TestRenderHookScripts:
+    """Unit tests for the hook script rendering functions."""
+
+    def test_ps1_escapes_apostrophes(self) -> None:
+        result = _render_hook_ps1(r"C:\Users\O'Brien\.venv\Scripts\python.exe")
+        assert "O''Brien" in result
+
+    def test_ps1_handles_spaces_in_path(self) -> None:
+        result = _render_hook_ps1(r"C:\Program Files\Python312\python.exe")
+        assert r"C:\Program Files\Python312\python.exe" in result
+
+    def test_sh_quotes_path_with_spaces(self) -> None:
+        result = _render_hook_sh("/home/user/my project/.venv/bin/python")
+        assert "my project" in result
+        # shlex.quote wraps in single quotes
+        assert "'/home/user/my project/.venv/bin/python'" in result
+
+    def test_sh_quotes_path_with_apostrophes(self) -> None:
+        python_path = "/home/o'brien/.venv/bin/python"
+        result = _render_hook_sh(python_path)
+        assert shlex.quote(python_path) in result
+
+    def test_ps1_preserves_fallback_chain(self) -> None:
+        result = _render_hook_ps1("/usr/bin/python3")
+        assert "copilot-command-ring" in result
+        assert "'py'" in result
+        assert "'python'" in result
+
+    def test_sh_preserves_fallback_chain(self) -> None:
+        result = _render_hook_sh("/usr/bin/python3")
+        assert "copilot-command-ring hook" in result
+        assert "python3 -m" in result
+        assert "python -m" in result
 
 
 class TestSetupGlobalHooks:
@@ -245,6 +309,26 @@ class TestSetupGlobalHooks:
         with patch("builtins.input", return_value="n"):
             result = setup_global_hooks(interactive=True)
         assert result is False
+
+    def test_ps1_embeds_python_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        copilot_home = tmp_path / "copilot"
+        monkeypatch.setenv("COPILOT_HOME", str(copilot_home))
+        setup_global_hooks(force=True)
+        content = (copilot_home / "hooks" / "run-hook.ps1").read_text()
+        resolved = str(Path(sys.executable).resolve())
+        assert resolved in content
+
+    def test_sh_embeds_python_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        copilot_home = tmp_path / "copilot"
+        monkeypatch.setenv("COPILOT_HOME", str(copilot_home))
+        setup_global_hooks(force=True)
+        content = (copilot_home / "hooks" / "run-hook.sh").read_text()
+        resolved = str(Path(sys.executable).resolve())
+        assert resolved in content
 
 
 class TestCLI:

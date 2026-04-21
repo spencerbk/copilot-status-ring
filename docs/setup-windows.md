@@ -38,13 +38,15 @@ py -3 --version
 
 ## 2. Install the host bridge
 
-> **Recommended:** Create a virtual environment first so the CLI lands on your PATH:
+> **Recommended:** Create a virtual environment to isolate dependencies:
 >
 > ```powershell
 > py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1
 > ```
 >
 > Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
+>
+> The hook install commands in step 6 record the Python path so hooks work even outside the venv.
 
 ```powershell
 pip install git+https://github.com/spencerbk/copilot-status-ring.git
@@ -128,7 +130,9 @@ Create `.copilot-command-ring.local.json` in your project root and add a `serial
 copilot-command-ring setup
 ```
 
-This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically.
+This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. The hooks record the path to your current Python, so they work even when the venv isn't active.
+
+> **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring setup --force` to update the recorded Python path.
 
 **Option B — Per-repo deploy:**
 
@@ -136,7 +140,9 @@ This installs hooks to `~/.copilot/hooks/` so the ring works in **every** reposi
 copilot-command-ring deploy C:\code\my-project
 ```
 
-This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. Repeat for each repo.
+This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. The deployed hooks record the current Python path. Repeat for each repo.
+
+> **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring deploy C:\code\my-project --force` in that repo to update the recorded Python path.
 
 ---
 
