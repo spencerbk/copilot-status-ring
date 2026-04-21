@@ -73,7 +73,9 @@ pip install git+https://github.com/spencerbk/copilot-status-ring.git
 Or from a local clone:
 
 ```bash
-git clone https://github.com/spencerbk/copilot-status-ring.git && cd copilot-status-ring && pip install .
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+pip install .
 ```
 
 **Windows (PowerShell):**
@@ -85,7 +87,9 @@ pip install git+https://github.com/spencerbk/copilot-status-ring.git
 Or from a local clone:
 
 ```powershell
-git clone https://github.com/spencerbk/copilot-status-ring.git; cd copilot-status-ring; pip install .
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+pip install .
 ```
 
 ### 2. Flash firmware
