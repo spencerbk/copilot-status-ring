@@ -16,6 +16,10 @@ $HostDir = Join-Path $RepoRoot 'host'
 # Set PYTHONPATH so copilot_command_ring is importable
 $env:PYTHONPATH = $HostDir
 
+# Identify the Copilot CLI session for multi-session ring arbitration.
+# This script's parent process is the Copilot CLI — use its PID as session key.
+$env:COPILOT_RING_CLI_PID = (Get-CimInstance Win32_Process -Filter "ProcessId = $PID").ParentProcessId
+
 # Find Python: prefer py -3 (Windows launcher), fallback to python
 $Python = $null
 if (Get-Command 'py' -ErrorAction SilentlyContinue) {

@@ -17,20 +17,20 @@ CircuitPython firmware for the Copilot Command Ring.
 ## Files
 
 - `boot.py` — Sets custom USB product name ("Copilot Command Ring") and enables `usb_cdc.data` for host communication.
-- `code.py` — Main firmware with state machine and animations. For long-running sessions on small boards such as the Pico, it drains queued JSON-line serial input each loop, clears stale partial input after USB reconnects, runs garbage collection after serial parsing work, and uses watchdog/reload recovery when supported.
+- `code.py` — Main firmware with state machine and animations. Tracks multiple concurrent Copilot CLI sessions and displays the highest-priority state across all of them. For long-running sessions on small boards such as the Pico, it drains queued JSON-line serial input each loop, reads buffered data regardless of USB connection state (so messages are never lost between rapid hook invocations), clears stale partial input only on USB reconnect, runs garbage collection after serial parsing work, and uses watchdog/reload recovery when supported.
 
 ## Pin configuration
 
-The NeoPixel data pin depends on your board. Edit `NEOPIXEL_PIN` at the top of `code.py` to match:
+The firmware auto-detects the NeoPixel data pin based on your board:
 
-| Board | Pin to use |
-|-------|-----------|
-| Raspberry Pi Pico | `board.GP6` |
+| Board | Auto-detected pin |
+|-------|------------------|
+| Raspberry Pi Pico / Pico W | `board.GP6` |
 | Adafruit Feather RP2040 | `board.D6` |
-| Adafruit QT Py RP2040 / ESP32-S2 / ESP32-S3 | `board.A0` — **no `D6` on QT Py boards** |
-| Seeed Studio XIAO RP2350 / ESP32-C6 | `board.D6` (default works) |
+| Adafruit QT Py RP2040 / ESP32-S2 / ESP32-S3 | `board.A0` |
+| Seeed Studio XIAO RP2350 / ESP32-C6 | `board.D6` |
 
-To change the pin, edit `NEOPIXEL_PIN` at the top of `code.py`:
+To override auto-detection, edit `NEOPIXEL_PIN` at the top of `code.py`:
 ```python
-NEOPIXEL_PIN = board.A0  # QT Py boards
+NEOPIXEL_PIN = board.A0  # override auto-detection
 ```

@@ -48,7 +48,7 @@ if ($Python) {
     if ($LASTEXITCODE -eq 0) {
         Pass "pyserial importable (version $importCheck)"
     } else {
-        Fail "pyserial not installed — run: py -3 -m pip install pyserial"
+        Fail "pyserial not installed — run: py -3 -m pip install copilot-command-ring"
     }
 } else {
     Fail "Skipped (no Python)"
@@ -128,8 +128,9 @@ if ($Python) {
     $detectResult = & $Python @PyArgs -c @"
 import sys
 sys.path.insert(0, r'$HostDir')
-from copilot_command_ring.detect_ports import detect_port
-result = detect_port()
+from copilot_command_ring.detect_ports import detect_serial_port
+from copilot_command_ring.config import load_config
+result = detect_serial_port(load_config())
 print(result if result else '(none detected)')
 "@ 2>&1
     if ($LASTEXITCODE -eq 0) {

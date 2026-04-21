@@ -48,7 +48,7 @@ if [ -n "$PYTHON" ]; then
         SERIAL_VER=$($PYTHON -c "import serial; print(serial.VERSION)" 2>/dev/null || echo "unknown")
         pass "pyserial importable (version $SERIAL_VER)"
     else
-        fail "pyserial not installed — run: pip3 install pyserial"
+        fail "pyserial not installed — run: pip3 install copilot-command-ring"
     fi
 else
     fail "Skipped (no Python)"
@@ -131,8 +131,9 @@ section "Serial port detection"
 
 if [ -n "$PYTHON" ]; then
     if $PYTHON -c "
-from copilot_command_ring.detect_ports import detect_port
-result = detect_port()
+from copilot_command_ring.detect_ports import detect_serial_port
+from copilot_command_ring.config import load_config
+result = detect_serial_port(load_config())
 if result:
     print(result)
 else:

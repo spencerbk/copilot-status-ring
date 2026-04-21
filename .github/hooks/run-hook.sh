@@ -15,6 +15,10 @@ HOST_DIR="$REPO_ROOT/host"
 # Set PYTHONPATH so copilot_command_ring is importable
 export PYTHONPATH="$HOST_DIR${PYTHONPATH:+:$PYTHONPATH}"
 
+# Identify the Copilot CLI session for multi-session ring arbitration.
+# With exec below, $PPID is the Copilot CLI process that spawned this hook.
+export COPILOT_RING_CLI_PID=$PPID
+
 # Find Python: prefer python3, fallback to python
 PYTHON=""
 if command -v python3 &>/dev/null; then
@@ -29,6 +33,6 @@ if [ -z "$PYTHON" ]; then
 fi
 
 # Pipe stdin through; stderr is forwarded, stdout stays clean
-exec "$PYTHON" -m copilot_command_ring.hook_main "$EVENT_NAME" 2>&2
+exec "$PYTHON" -m copilot_command_ring.hook_main "$EVENT_NAME" 1>&2
 
 exit 0

@@ -56,28 +56,27 @@ Or create `.copilot-command-ring.local.json`:
 
 ## "pyserial not installed"
 
-The host bridge requires `pyserial` for serial communication.
+The installed host bridge depends on `pyserial`. Reinstall or upgrade
+`copilot-command-ring` so pip installs the dependency automatically.
 
 ```powershell
 # Windows
-py -3 -m pip install pyserial
+py -3 -m pip install --upgrade git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
 ```bash
-# macOS
-pip3 install pyserial
+# macOS / Linux
+pip3 install --upgrade git+https://github.com/spencerbk/copilot-status-ring.git
 ```
 
+If you're working from a local clone instead of a Git install:
+
 ```bash
-# Linux
-pip3 install pyserial
-# or: sudo apt install python3-serial
+pip3 install -e .
 ```
 
-Verify it's installed:
-
-```bash
-python3 -c "import serial; print(serial.VERSION)"
+```powershell
+py -3 -m pip install -e .
 ```
 
 ---
@@ -86,32 +85,52 @@ python3 -c "import serial; print(serial.VERSION)"
 
 The ring doesn't respond when you use Copilot CLI.
 
-**Check the hook file exists:**
+**Check that hooks are installed:**
 
-The file must be at `.github/hooks/copilot-command-ring.json` **in the repository** you're working in. Copilot CLI loads hooks from the current repo.
+Hooks can be installed globally (works in all repos) or per-repo:
 
 ```bash
-ls .github/hooks/copilot-command-ring.json
+# Global setup (recommended — one-time, works everywhere)
+copilot-command-ring setup
+
+# Or per-repo deploy
+copilot-command-ring deploy /path/to/your-repo
+```
+
+```powershell
+# Global setup (recommended — one-time, works everywhere)
+copilot-command-ring setup
+
+# Or per-repo deploy
+copilot-command-ring deploy C:\path\to\your-repo
+```
+
+Verify hooks exist:
+
+```bash
+ls ~/.copilot/hooks/copilot-command-ring.json        # global
+ls .github/hooks/copilot-command-ring.json            # per-repo
 ```
 
 **Check Copilot CLI version:**
 
-Hook support requires a recent version of Copilot CLI. Update to the latest version:
-
-```bash
-npm update -g @anthropic-ai/claude-code  # or your Copilot CLI package
-```
+Hook support requires a recent version of GitHub Copilot CLI. Update it using the
+same installation method you used originally.
 
 **Check that wrapper scripts are executable (macOS/Linux):**
 
 ```bash
+# Global hooks
+chmod +x ~/.copilot/hooks/run-hook.sh
+
+# Per-repo hooks
 chmod +x .github/hooks/run-hook.sh
 ```
 
 **Test the hook manually:**
 
 ```bash
-echo '{"toolName":"bash"}' | python3 -m copilot_command_ring.hook_main preToolUse
+echo '{"toolName":"bash"}' | copilot-command-ring hook preToolUse
 ```
 
 If this sends data to the ring (or prints in dry-run mode), the hook itself works — the issue is with Copilot CLI loading it.
@@ -143,7 +162,7 @@ If brightness is set to `0`, the LEDs won't be visible. Check your config:
 echo $COPILOT_RING_BRIGHTNESS
 ```
 
-Default brightness is `0.06`–`0.10`. Try setting it higher:
+Default brightness is `0.04`. Try setting it higher:
 
 ```bash
 export COPILOT_RING_BRIGHTNESS=0.15
@@ -159,7 +178,8 @@ Recent firmware versions include several safeguards for long-running sessions:
 
 - A capped byte buffer so malformed or partial serial data without a newline cannot grow forever in RAM
 - Draining all queued JSON lines each loop so valid traffic cannot backlog indefinitely in memory
-- Clearing stale partial input after a USB disconnect/reconnect
+- Reading buffered serial data regardless of USB connection state so messages are never lost between rapid hook invocations
+- Clearing stale partial input only on USB reconnect (not on momentary disconnects between hook calls)
 - Running `gc.collect()` after serial parsing work to reclaim memory from parsed JSON dicts
 - Using a watchdog plus firmware reload path so repeated loop failures recover automatically
 
@@ -187,7 +207,7 @@ The firmware is configured for 24 pixels (NeoPixel Ring product 1586). If you're
 
 **Check data pin:**
 
-Make sure the data pin in the firmware matches the pin you've wired. The pin name varies by board — e.g. `board.GP6` on Pico, `board.D6` on Feather/XIAO, `board.A0` on QT Py. See [`docs/hardware.md`](hardware.md) for the full pin table.
+Make sure the data pin in the firmware matches the pin you've wired. The CircuitPython firmware auto-detects the correct pin for supported boards (e.g. `board.GP6` on Pico, `board.D6` on Feather/XIAO, `board.A0` on QT Py). If auto-detection picks the wrong pin, override it by setting `NEOPIXEL_PIN` at the top of `code.py`. See [`docs/hardware.md`](hardware.md) for the full pin table.
 
 **Check color order:**
 
@@ -302,16 +322,20 @@ If you run Copilot CLI in multiple terminals (or across different repos) on the 
 
 **How it works:**
 
-The host bridge uses a system-wide file lock so that concurrent hook processes never corrupt each other's serial writes. Each write acquires the lock, sends one JSON line, and releases it — the lock is held for only a few milliseconds.
+The host bridge tags every serial message with a session identifier (the Copilot CLI process PID). The CircuitPython firmware maintains a lightweight session table and resolves the **highest-priority** state across all active sessions. A system-wide file lock ensures concurrent hook processes never corrupt each other's serial writes.
 
-The ring shows a **"last writer wins"** blended view: whichever session sent the most recent event determines the current animation. This means the ring may rapidly switch between states if two sessions are actively working.
+**Priority order** (highest → lowest):
+
+`error` → `awaiting_permission` → `working` → `subagent_active` → `compacting` → `prompt_submitted` → `session_start` → `agent_idle` → `idle` → `off`
 
 **What to expect:**
 
 - ✅ No crashes, corrupted writes, or silent failures.
 - ✅ Each session's events reach the ring intact.
-- ⚠️ The ring cannot display two sessions simultaneously — it shows the most recent event from any session.
-- ⚠️ A `sessionEnd` from one session will turn the ring off even if another session is still active.
+- ✅ The ring displays the most "interesting" state across all active sessions — for example, if one session is working and another is idle, the ring shows the working spinner.
+- ✅ When a session ends, the ring seamlessly continues showing the remaining sessions' state instead of going dark.
+- ⚠️ The ring cannot display two sessions simultaneously as separate animations — it shows the single highest-priority state.
+- ⚠️ If a Copilot CLI crashes without sending `sessionEnd`, the firmware prunes the stale session after 5 minutes.
 
 **If the ring seems stuck or unresponsive during multi-session use:**
 
@@ -325,7 +349,9 @@ The ring shows a **"last writer wins"** blended view: whichever session sent the
 
    Deleting this file is safe — a new lock is created on the next write.
 
-> **Future:** Full session-aware multiplexing (where the ring tracks all active sessions and shows priority-based state) is planned for the daemon mode in v3. See [`ROADMAP.md`](../ROADMAP.md).
+3. Verify the session ID is being sent by checking for a `"session"` field in the debug output.
+
+> **Note:** Multi-session arbitration requires the CircuitPython firmware. The Arduino firmware does not parse the `session` field and operates in single-session (last-writer-wins) mode.
 
 ---
 

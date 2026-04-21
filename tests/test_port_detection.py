@@ -11,9 +11,13 @@ from copilot_command_ring.config import Config
 from copilot_command_ring.detect_ports import detect_serial_port
 
 
-def _fake_port(device: str, description: str) -> SimpleNamespace:
+def _fake_port(
+    device: str,
+    description: str,
+    location: str = "",
+) -> SimpleNamespace:
     """Create a mock serial port info object."""
-    return SimpleNamespace(device=device, description=description)
+    return SimpleNamespace(device=device, description=description, location=location)
 
 
 # ── Explicit port in config ───────────────────────────────────────────────
@@ -128,3 +132,32 @@ def test_pyserial_import_error_returns_none():
     with patch("builtins.__import__", side_effect=_block_serial_import):
         result = detect_serial_port(cfg)
     assert result is None
+
+
+# ── Dual-CDC port selection ───────────────────────────────────────────────
+
+
+def test_dual_cdc_prefers_data_channel():
+    """When two ports share the same description, prefer the data channel.
+
+    CircuitPython boards with both console and data CDC expose two COM
+    ports.  The data channel has the higher USB interface number, visible
+    in the LOCATION field.
+    """
+    ports = [
+        _fake_port("COM10", "USB Serial Device", location="1-5.4.1.2:x.0"),
+        _fake_port("COM12", "USB Serial Device", location="1-5.4.1.2:x.2"),
+    ]
+    cfg = Config(serial_port=None, device_match_descriptions=["USB Serial"])
+    with patch("serial.tools.list_ports.comports", return_value=ports):
+        result = detect_serial_port(cfg)
+    assert result == "COM12"
+
+
+def test_single_port_without_location_still_works():
+    """A single matching port with no location data is still returned."""
+    ports = [_fake_port("COM5", "Copilot Command Ring")]
+    cfg = Config(serial_port=None, device_match_descriptions=["Copilot Command Ring"])
+    with patch("serial.tools.list_ports.comports", return_value=ports):
+        result = detect_serial_port(cfg)
+    assert result == "COM5"

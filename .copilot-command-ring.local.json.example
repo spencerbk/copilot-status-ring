@@ -1,10 +1,9 @@
 {
-  "serial_port": "COM7",
   "baud": 115200,
   "pixel_count": 24,
   "brightness": 0.04,
   "idle_mode": "off",
   "device_match": {
-    "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial"]
+    "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial", "Seeed"]
   }
 }

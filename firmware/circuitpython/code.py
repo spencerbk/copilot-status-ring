@@ -28,11 +28,9 @@ except ImportError:
     _WATCHDOG_RESET = None
 
 # ── Configuration ──────────────────────────────────────────────────────────
-# Data pin for the NeoPixel ring — change to match your board:
-#   Feather RP2040 / XIAO RP2350 / XIAO ESP32-C6: board.D6 (default)
-#   Raspberry Pi Pico / Pico W:                    board.GP6
-#   QT Py RP2040 / QT Py ESP32-S2 / QT Py ESP32-S3: board.A0
-NEOPIXEL_PIN = board.GP6
+# Override: set to a specific pin (e.g., board.A0) to skip auto-detection.
+# Leave as None to let the firmware detect the correct pin for your board.
+NEOPIXEL_PIN = None
 NUM_PIXELS = 24
 BRIGHTNESS = 0.04  # keep low to avoid blinding / power issues
 BRIGHTNESS_BOOST = 0.02  # extra brightness for dim states (breathing)
@@ -42,6 +40,30 @@ LOOP_DELAY = 0.02  # ~50 fps
 SERIAL_BUF_MAX = 512  # discard buffer if no newline within this many bytes
 WATCHDOG_TIMEOUT = 8  # keep longer than normal render loop latency
 MAX_CONSECUTIVE_ERRORS = 10  # force reload after this many consecutive loop failures
+
+# ── Board auto-detection ───────────────────────────────────────────────────
+
+def _detect_neopixel_pin():
+    """Auto-detect the NeoPixel data pin from board identity.
+
+    Pin families:
+      Pico / Pico W:        board.GP6
+      QT Py (all variants):  board.A0  (no D6 on QT Py boards)
+      Feather / XIAO / most: board.D6
+    """
+    bid = getattr(board, "board_id", "")
+    if "pico" in bid:
+        return board.GP6
+    if "qtpy" in bid or "qt_py" in bid:
+        return board.A0
+    if hasattr(board, "D6"):
+        return board.D6
+    # Fallback for unlisted boards
+    for name in ("GP6", "A0"):
+        if hasattr(board, name):
+            return getattr(board, name)
+    raise RuntimeError("Cannot detect NeoPixel pin — set NEOPIXEL_PIN in code.py")
+
 
 # ── Color palette ──────────────────────────────────────────────────────────
 COLOR_OFF = (0, 0, 0)
@@ -83,6 +105,25 @@ TRANSIENT_STATES = {"tool_ok", "tool_error", "error", "notify"}
 
 # States that get a brightness boost for visibility
 BOOSTED_STATES = {"agent_idle"}
+
+# ── Multi-session arbitration ──────────────────────────────────────────────
+# Priority order: higher value = the ring should prefer this state when
+# multiple sessions are active.  Only persistent (non-transient) states are
+# tracked per-session; transient flashes are shown on top then reverted.
+STATE_PRIORITY = {
+    "off": 0,
+    "idle": 1,
+    "agent_idle": 2,
+    "session_start": 3,
+    "prompt_submitted": 4,
+    "compacting": 5,
+    "subagent_active": 6,
+    "working": 7,
+    "awaiting_permission": 8,
+    "error": 9,
+}
+MAX_SESSIONS = 8
+STALE_TIMEOUT = 300  # seconds before an idle session is pruned
 
 
 # ── Animation engine ───────────────────────────────────────────────────────
@@ -224,6 +265,89 @@ class StatusRing:
         self.pixels.fill((r, g, b))
 
 
+# ── Multi-session tracker ──────────────────────────────────────────────────
+
+class SessionTracker:
+    """Tracks active Copilot CLI sessions and resolves the winning state.
+
+    Each session is identified by a string ID (typically the CLI process PID).
+    The tracker stores each session's last *persistent* state and resolves
+    priority across all live sessions.  Transient states (flashes) are
+    recorded as pending but do not overwrite the persistent state.
+    """
+
+    def __init__(self):
+        self._sessions = {}   # {session_id: [persistent_state, last_seen]}
+        self._pending_transient = None
+
+    @property
+    def active_count(self):
+        return len(self._sessions)
+
+    def update(self, session_id, state, now):
+        """Register or update a session's state.
+
+        Transient states are stored as a pending flash without changing
+        the session's persistent state.  An ``"off"`` state removes
+        the session entirely (session ended).
+        """
+        if state in TRANSIENT_STATES:
+            self._pending_transient = state
+            # Touch timestamp so the session isn't pruned while active
+            if session_id in self._sessions:
+                self._sessions[session_id][1] = now
+            return
+
+        if state == "off":
+            self._sessions.pop(session_id, None)
+        else:
+            if session_id in self._sessions:
+                entry = self._sessions[session_id]
+                entry[0] = state
+                entry[1] = now
+            else:
+                # Evict oldest if at capacity
+                if len(self._sessions) >= MAX_SESSIONS:
+                    oldest_id = None
+                    oldest_ts = now
+                    for sid, entry in self._sessions.items():
+                        if entry[1] < oldest_ts:
+                            oldest_ts = entry[1]
+                            oldest_id = sid
+                    if oldest_id is not None:
+                        del self._sessions[oldest_id]
+                self._sessions[session_id] = [state, now]
+
+    def resolve(self, now):
+        """Return ``(winning_persistent_state, pending_transient_or_None)``.
+
+        Prunes stale sessions (no messages within ``STALE_TIMEOUT``),
+        then picks the highest-priority persistent state.
+        """
+        # Prune stale sessions
+        for sid in list(self._sessions):
+            if now - self._sessions[sid][1] > STALE_TIMEOUT:
+                del self._sessions[sid]
+
+        transient = self._pending_transient
+        self._pending_transient = None
+
+        if not self._sessions:
+            return "off", transient
+
+        best_state = "off"
+        best_priority = -1
+        best_time = 0.0
+        for entry in self._sessions.values():
+            p = STATE_PRIORITY.get(entry[0], 0)
+            if p > best_priority or (p == best_priority and entry[1] > best_time):
+                best_priority = p
+                best_state = entry[0]
+                best_time = entry[1]
+
+        return best_state, transient
+
+
 # ── Serial reader ──────────────────────────────────────────────────────────
 
 serial = usb_cdc.data
@@ -236,28 +360,34 @@ def log_exception(context, exc):
     print(context, type(exc).__name__, exc)
 
 
-def read_serial():
-    """Read available bytes and return the latest state plus parse activity.
+def read_serial(tracker):
+    """Read available bytes and process messages through the session tracker.
 
     Drains all complete lines from the buffer each call so that the
-    buffer cannot grow without bound under sustained traffic.  Only the
-    last received state string is returned (older messages are discarded)
-    because only the most recent state matters for the ring.
+    buffer cannot grow without bound under sustained traffic.
+
+    For session-tagged messages, updates the tracker.  For messages
+    without a session field, records the latest bare state for backward-
+    compatible direct ``set_state`` handling.
+
+    Returns ``(has_session_msgs, latest_bare_state, parsed_any)``.
     """
     global _serial_buf, _was_connected  # noqa: PLW0603
 
     if serial is None:
-        return None, False
+        return False, None, False
 
-    # Clear stale buffer data on USB disconnect/reconnect
+    # Track USB connection state — only clear buffer on reconnect
+    # (a new physical USB connection may carry stale partial data).
+    # Do NOT clear or skip reading when disconnected: each hook
+    # invocation opens → writes → closes the port quickly, so the
+    # MCU frequently sees connected=False while valid data sits in
+    # the USB hardware buffer waiting to be read.
     connected = getattr(serial, "connected", True)
-    if not connected:
-        _was_connected = False
-        _serial_buf[:] = b""
-        return None, False
-    if not _was_connected:
-        _was_connected = True
-        _serial_buf[:] = b""
+    if connected and not _was_connected:
+        # Reconnect: discard partial leftovers from old connection
+        _serial_buf = bytearray()
+    _was_connected = connected
 
     try:
         if serial.in_waiting:
@@ -267,45 +397,54 @@ def read_serial():
     except Exception as exc:
         # Serial errors should never crash the firmware
         log_exception("serial read error", exc)
-        return None, False
+        return False, None, False
 
     # Prevent unbounded buffer growth from malformed data (no newlines)
     if len(_serial_buf) > SERIAL_BUF_MAX:
         # Keep only data after the last newline, or discard everything
         last_nl = _serial_buf.rfind(b"\n")
         if last_nl >= 0:
-            del _serial_buf[:last_nl + 1]
+            _serial_buf = bytearray(_serial_buf[last_nl + 1:])
         else:
-            _serial_buf[:] = b""
+            _serial_buf = bytearray()
         if len(_serial_buf) > SERIAL_BUF_MAX:
-            _serial_buf[:] = b""
+            _serial_buf = bytearray()
 
-    # Drain all complete lines, keep only the last valid state
-    latest_state = None
+    # Drain all complete lines
+    has_session_msgs = False
+    latest_bare_state = None
     parsed_line = False
+    now = time.monotonic()
     while True:
         newline = _serial_buf.find(b"\n")
         if newline < 0:
             break
         parsed_line = True
         line_bytes = bytes(_serial_buf[:newline])
-        del _serial_buf[:newline + 1]
+        _serial_buf = bytearray(_serial_buf[newline + 1:])
         try:
             line = line_bytes.decode("utf-8", "replace").strip()
             if line:
                 msg = json.loads(line)
                 state = msg.get("state", "off")
-                latest_state = state
+                session_id = msg.get("session")
+                if session_id is not None:
+                    has_session_msgs = True
+                    tracker.update(str(session_id), state, now)
+                else:
+                    latest_bare_state = state
         except (ValueError, KeyError, UnicodeError):
             pass  # discard malformed lines
 
-    return latest_state, parsed_line
+    return has_session_msgs, latest_bare_state, parsed_line
 
 
 # ── Initialisation ─────────────────────────────────────────────────────────
 
+_pin = NEOPIXEL_PIN or _detect_neopixel_pin()
+
 pixels = neopixel.NeoPixel(
-    NEOPIXEL_PIN,
+    _pin,
     NUM_PIXELS,
     brightness=BRIGHTNESS,
     auto_write=False,
@@ -322,6 +461,7 @@ pixels.fill(COLOR_OFF)
 pixels.show()
 
 ring = StatusRing(pixels, NUM_PIXELS)
+tracker = SessionTracker()
 _consecutive_errors = 0
 
 # Enable hardware watchdog for automatic recovery from hangs
@@ -333,11 +473,21 @@ if _WATCHDOG is not None and _WATCHDOG_RESET is not None:
 
 while True:
     try:
-        state, parsed_line = read_serial()
-        if state is not None:
-            ring.set_state(state)
+        now = time.monotonic()
+        has_sessions, bare_state, parsed_line = read_serial(tracker)
 
-        ring.tick(time.monotonic())
+        # Resolve session priority whenever sessions exist — not only
+        # when a new message arrived.  This ensures stale-session pruning
+        # runs even if no further messages come (e.g. lost "off" event).
+        if has_sessions or tracker.active_count > 0:
+            winning, transient = tracker.resolve(now)
+            ring.set_state(winning)
+            if transient is not None:
+                ring.set_state(transient)
+        elif bare_state is not None:
+            ring.set_state(bare_state)
+
+        ring.tick(now)
         if parsed_line:
             gc.collect()
         _consecutive_errors = 0
