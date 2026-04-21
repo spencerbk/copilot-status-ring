@@ -4,6 +4,16 @@ Step-by-step guide to set up the Copilot Command Ring on macOS.
 
 ---
 
+## 0. Install GitHub Copilot CLI
+
+This project requires the **GitHub Copilot CLI** agent — the ring visualizes its activity. Follow the [Installing GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) guide to install and authenticate it. Verify it's working:
+
+```bash
+copilot --version
+```
+
+---
+
 ## 1. Install Python 3
 
 macOS may include Python 3 already. Check:

@@ -47,6 +47,11 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 | **Host OS** | Windows | macOS, Linux |
 | **Firmware** | CircuitPython | Arduino |
 
+## Prerequisites
+
+- **GitHub Copilot CLI** — This project is a hardware companion for the Copilot CLI agent. Install it by following the [Installing GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) guide. Verify it's working by running `copilot` in your terminal.
+- **Python 3.9+** — Required for the host bridge. See the platform setup guides below for installation instructions.
+
 ## Quick Start
 
 ### 1. Install the host bridge
