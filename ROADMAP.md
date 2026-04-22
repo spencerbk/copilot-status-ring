@@ -36,23 +36,7 @@ User-facing personalization without changing code.
 
 ---
 
-## v3 — Background Daemon & Desktop Integration
-
-Replace direct hook-to-serial calls with a persistent host process.
-
-> **Note:** Multi-session state arbitration was delivered without a daemon — the firmware
-> now tracks sessions and resolves priorities on-device. A daemon would still provide
-> benefits for connection persistence and desktop integration.
-
-| Item | Description |
-|------|-------------|
-| Background host daemon | Long-running process that holds the serial connection open; hooks send messages to the daemon instead of opening/closing serial per event |
-| Desktop notification mirroring | Mirror Copilot CLI state to OS-native desktop notifications |
-| Desktop tray app | System tray presence for status and configuration |
-
----
-
-## v4 — Multi-Device & New Hardware
+## v3 — Multi-Device & New Hardware
 
 Extend beyond a single NeoPixel ring.
 
@@ -64,7 +48,7 @@ Extend beyond a single NeoPixel ring.
 
 ---
 
-## v5 — Distribution & Packaging
+## v4 — Distribution & Packaging
 
 Make installation easier for end users.
 
@@ -77,6 +61,18 @@ Make installation easier for end users.
 
 ---
 
+## Known Gaps / Future Hardening
+
+Areas where the current implementation is intentionally pragmatic and may warrant follow-up work if real-world issues surface.
+
+| Gap | Description |
+|-----|-------------|
+| Automated firmware regression tests | CircuitPython firmware logic (state machine, session tracker, stale-idle behavior) has no test harness in this repo. Changes are validated by static analysis (Ruff + Pyright) and manual hardware testing only. A host-side simulator or split-out pure-Python tracker module could enable pytest coverage without a real MCU. |
+| Firmware-hang surfacing | If the MCU locks up between serial writes, the host currently has no way to notice or alert. The onboard watchdog reboots the MCU, but the host is blind to the event. |
+| USB disconnect/reconnect UX | When the ring is physically unplugged mid-session, the host logs a serial error and the hook exits silently. There is no visible indicator on the host side that the ring has gone offline, and no automatic state resync when it returns. |
+
+---
+
 ## Out of Scope
 
 These items are explicitly out of scope for the foreseeable future:
@@ -85,3 +81,6 @@ These items are explicitly out of scope for the foreseeable future:
 - Cloud logging or telemetry backend
 - Bi-directional tool control via hooks
 - Advanced permission-policy enforcement
+- Background host daemon / long-running host process — multi-session arbitration is handled on-device, and the project prefers the one-shot hook model over a persistent process
+- Desktop notification mirroring / system tray app — covered by the OS and Copilot CLI itself; out of scope for this hardware companion
+- Host-side periodic heartbeat pings — not needed; the firmware breathes indefinitely when all sessions are stale instead of going dark

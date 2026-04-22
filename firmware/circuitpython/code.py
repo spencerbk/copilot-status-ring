@@ -127,7 +127,6 @@ STATE_PRIORITY = {
 }
 MAX_SESSIONS = 8
 STALE_TIMEOUT = 300  # seconds before an idle session is pruned
-HARD_OFF_TIMEOUT = 3600  # seconds of stale-idle before ring goes truly dark
 
 
 def should_apply_transient(persistent_state, transient):
@@ -334,7 +333,6 @@ class SessionTracker:
     def __init__(self):
         self._sessions = {}   # {session_id: [persistent_state, last_seen]}
         self._pending_transient = None
-        self._last_active_time = 0.0  # last time any session was active
         self._stale_idle = False  # True when sessions emptied by stale pruning
 
     @property
@@ -343,15 +341,13 @@ class SessionTracker:
 
     @property
     def stale_idle(self):
-        """True during the post-stale breathing window (before hard off)."""
-        if self._sessions or not self._stale_idle:
-            return False
-        return (time.monotonic() - self._last_active_time) < HARD_OFF_TIMEOUT
+        """True when all sessions were pruned by stale timeout.
 
-    @property
-    def had_sessions(self):
-        """True if any session was ever tracked."""
-        return self._last_active_time > 0.0
+        Masked while live sessions exist and cleared by an explicit
+        sessionEnd when no sessions remain. No upper bound — ring
+        breathes indefinitely.
+        """
+        return self._stale_idle and not self._sessions
 
     def update(self, session_id, state, now):
         """Register or update a session's state.
@@ -366,8 +362,6 @@ class SessionTracker:
             if session_id in self._sessions:
                 self._sessions[session_id][1] = now
             return
-
-        self._last_active_time = now
 
         if state == "off":
             self._sessions.pop(session_id, None)
@@ -412,10 +406,10 @@ class SessionTracker:
             # Sessions just emptied by stale pruning → enter stale idle
             if pruned:
                 self._stale_idle = True
-            # Stale idle window: show dim breathing instead of going dark
-            if (self._stale_idle
-                    and self._last_active_time > 0.0
-                    and (now - self._last_active_time) < HARD_OFF_TIMEOUT):
+            # Stale idle: show dim breathing indefinitely instead of going
+            # dark. Hidden while live sessions exist and cleared only when
+            # the last active session ends explicitly.
+            if self._stale_idle:
                 return "agent_idle", transient
             return "off", transient
 
@@ -436,6 +430,7 @@ class SessionTracker:
 
 serial = usb_cdc.data
 _serial_buf = bytearray()
+_legacy_bare_state = None  # persistent fallback for untagged legacy messages
 _was_connected = True
 
 
@@ -556,27 +551,37 @@ while True:
     try:
         now = time.monotonic()
         has_sessions, bare_state, parsed_line = read_serial(tracker)
+        if has_sessions:
+            _legacy_bare_state = None
+        elif bare_state is not None and bare_state not in TRANSIENT_STATES:
+            _legacy_bare_state = bare_state
 
         # Resolve session priority whenever live session-tagged messages exist
         # — not only when a new message arrived.  This ensures stale-session
         # pruning runs even if no further messages come (e.g. lost "off"
-        # event). Preserve legacy bare-state handling ahead of stale-idle
-        # fallback so mixed tagged/untagged traffic still shows current work.
+        # event). Preserve persistent legacy bare-state handling ahead of
+        # stale-idle fallback so mixed tagged/untagged traffic still shows
+        # current work.
         if has_sessions or tracker.active_count > 0:
             winning, transient = tracker.resolve(now)
             ring.set_state(winning)
             if should_apply_transient(winning, transient):
                 ring.set_state(transient)
-        elif bare_state is not None:
-            ring.set_state(bare_state)
+        elif _legacy_bare_state is not None:
+            ring.set_state(_legacy_bare_state)
+            if (bare_state in TRANSIENT_STATES
+                    and should_apply_transient(_legacy_bare_state, bare_state)):
+                ring.set_state(bare_state)
+        elif bare_state in TRANSIENT_STATES:
+            # Legacy transient with no persistent bare state — overlay once
+            # on top of whatever the ring is currently showing.
+            if should_apply_transient(ring.state, bare_state):
+                ring.set_state(bare_state)
         elif tracker.stale_idle:
             winning, transient = tracker.resolve(now)
             ring.set_state(winning)
             if should_apply_transient(winning, transient):
                 ring.set_state(transient)
-        elif tracker.had_sessions and ring.state == "agent_idle":
-            # Hard off timeout expired after stale idle — go dark
-            ring.set_state("off")
 
         ring.tick(now)
         if parsed_line:
