@@ -2,7 +2,7 @@
   "baud": 115200,
   "pixel_count": 24,
   "brightness": 0.04,
-  "idle_mode": "off",
+  "idle_mode": "breathing",
   "device_match": {
     "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial", "Seeed"]
   }

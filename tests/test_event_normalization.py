@@ -22,7 +22,8 @@ def _load_fixture(name: str) -> dict:
 
 def test_normalize_session_start_empty_payload():
     result = normalize_event("sessionStart", {})
-    assert result == {"event": "sessionStart", "state": "session_start"}
+    assert result["event"] == "sessionStart"
+    assert result["state"] == "session_start"
 
 
 def test_normalize_session_start_with_payload():
@@ -55,7 +56,8 @@ def test_normalize_session_end_empty_payload_omits_reason():
 def test_normalize_user_prompt_submitted_state():
     payload = _load_fixture("userPromptSubmitted.json")
     result = normalize_event("userPromptSubmitted", payload)
-    assert result == {"event": "userPromptSubmitted", "state": "prompt_submitted"}
+    assert result["event"] == "userPromptSubmitted"
+    assert result["state"] == "prompt_submitted"
 
 
 # ── preToolUse ────────────────────────────────────────────────────────────
@@ -317,3 +319,41 @@ def test_normalize_empty_payload_does_not_crash(event_name: str):
     result = normalize_event(event_name, {})
     assert isinstance(result, dict)
     assert result["event"] == event_name
+
+
+# ── Cross-cutting: per-state ttl_s defaults ──────────────────────────────
+
+
+def test_working_state_carries_ttl():
+    result = normalize_event("preToolUse", {"toolName": "edit"})
+    assert result["state"] == "working"
+    assert isinstance(result["ttl_s"], int)
+    assert result["ttl_s"] > 0
+
+
+def test_awaiting_permission_has_longer_ttl_than_working():
+    from copilot_command_ring.constants import STATE_TTL_DEFAULTS
+
+    assert STATE_TTL_DEFAULTS["awaiting_permission"] >= STATE_TTL_DEFAULTS["working"]
+
+
+def test_agent_idle_has_no_ttl():
+    result = normalize_event("agentStop", {})
+    assert result["state"] == "agent_idle"
+    assert "ttl_s" not in result
+
+
+def test_session_end_has_no_ttl():
+    result = normalize_event("sessionEnd", {})
+    assert result["state"] == "off"
+    assert "ttl_s" not in result
+
+
+def test_transient_states_have_no_ttl():
+    ok = normalize_event("postToolUse", {"toolName": "edit"})
+    assert ok["state"] == "tool_ok"
+    assert "ttl_s" not in ok
+
+    notify = normalize_event("notification", {})
+    assert notify["state"] == "notify"
+    assert "ttl_s" not in notify

@@ -5,9 +5,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
 
-def serialize_message(message: dict[str, object]) -> bytes:
+def serialize_message(message: Mapping[str, object]) -> bytes:
     """Serialize an event dict to a newline-terminated UTF-8 JSON line."""
     return (json.dumps(message, separators=(",", ":")) + "\n").encode("utf-8")
 
@@ -23,6 +24,6 @@ def deserialize_message(line: bytes) -> dict[str, object] | None:
     return result  # type: ignore[return-value]
 
 
-def format_message_for_log(message: dict[str, object]) -> str:
+def format_message_for_log(message: Mapping[str, object]) -> str:
     """Return a compact, deterministic string for debug logging."""
     return json.dumps(message, sort_keys=True)

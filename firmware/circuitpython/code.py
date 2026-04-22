@@ -40,7 +40,9 @@ LOOP_DELAY = 0.02  # ~50 fps
 SERIAL_BUF_MAX = 512  # discard buffer if no newline within this many bytes
 WATCHDOG_TIMEOUT = 8  # keep longer than normal render loop latency
 MAX_CONSECUTIVE_ERRORS = 10  # force reload after this many consecutive loop failures
-
+SERIAL_SILENCE_TIMEOUT = 600  # seconds of zero received bytes → reload when sessions active
+DEFAULT_IDLE_MODE = "breathing"  # used when no message has set one yet
+
 # ── Board auto-detection ───────────────────────────────────────────────────
 
 def _detect_neopixel_pin():
@@ -331,9 +333,17 @@ class SessionTracker:
     """
 
     def __init__(self):
-        self._sessions = {}   # {session_id: [persistent_state, last_seen]}
+        self._sessions = {}   # {session_id: [persistent_state, last_seen, ttl_s_or_None]}
         self._pending_transient = None
-        self._stale_idle = False  # True when sessions emptied by stale pruning
+        self._idle_mode = DEFAULT_IDLE_MODE  # last-seen preference from the host
+        # Reboots / watchdog reloads should settle back to the dim breathing
+        # idle animation instead of leaving the ring dark until the next host
+        # event arrives.
+        self._refresh_empty_fallback()
+
+    def _refresh_empty_fallback(self):
+        """Apply ``idle_mode`` to the no-session fallback state."""
+        self._stale_idle = self._idle_mode != "off"
 
     @property
     def active_count(self):
@@ -341,21 +351,36 @@ class SessionTracker:
 
     @property
     def stale_idle(self):
-        """True when all sessions were pruned by stale timeout.
+        """True when no live sessions remain and the ring should breathe idle.
 
-        Masked while live sessions exist and cleared by an explicit
-        sessionEnd when no sessions remain. No upper bound — ring
-        breathes indefinitely.
+        Masked while live sessions exist. Cleared when the last session ends or
+        is pruned while ``idle_mode == "off"``. No upper bound — the ring can
+        breathe indefinitely while idle.
         """
         return self._stale_idle and not self._sessions
 
-    def update(self, session_id, state, now):
+    def update(self, session_id, state, now, ttl_s=None, idle_mode=None):
         """Register or update a session's state.
 
         Transient states are stored as a pending flash without changing
         the session's persistent state.  An ``"off"`` state removes
-        the session entirely (session ended).
+        the session entirely (session ended), but the stale-idle fallback
+        is preserved unless ``idle_mode == "off"`` so the ring keeps
+        breathing instead of going dark on session end.
+
+        ``ttl_s`` is the optional per-message decay window. If the
+        session goes that long without a refresh, ``resolve()`` reports
+        it as ``"agent_idle"`` instead of its persistent state.
+        ``idle_mode`` is the host's preference for what to do when all
+        sessions are gone — ``"breathing"`` (default) keeps the ring
+        lit with a dim breathing animation, ``"off"`` reverts to the
+        pre-fix hard-dark behavior.
         """
+        if idle_mode in ("breathing", "off"):
+            self._idle_mode = idle_mode
+            if not self._sessions:
+                self._refresh_empty_fallback()
+
         if state in TRANSIENT_STATES:
             self._pending_transient = state
             # Touch timestamp so the session isn't pruned while active
@@ -365,14 +390,18 @@ class SessionTracker:
 
         if state == "off":
             self._sessions.pop(session_id, None)
-            # Explicit end: if no sessions remain, do NOT enter stale idle
+            # Explicit end: honor idle_mode. Breathing (the default) keeps
+            # the stale-idle fallback so the ring never goes dark on its
+            # own. "off" preserves the pre-fix behavior for users who
+            # really want hard-dark on sessionEnd.
             if not self._sessions:
-                self._stale_idle = False
+                self._refresh_empty_fallback()
         else:
             if session_id in self._sessions:
                 entry = self._sessions[session_id]
                 entry[0] = state
                 entry[1] = now
+                entry[2] = ttl_s
             else:
                 # Evict oldest if at capacity
                 if len(self._sessions) >= MAX_SESSIONS:
@@ -384,7 +413,7 @@ class SessionTracker:
                             oldest_id = sid
                     if oldest_id is not None:
                         del self._sessions[oldest_id]
-                self._sessions[session_id] = [state, now]
+                self._sessions[session_id] = [state, now, ttl_s]
 
     def resolve(self, now):
         """Return ``(winning_persistent_state, pending_transient_or_None)``.
@@ -403,12 +432,13 @@ class SessionTracker:
         self._pending_transient = None
 
         if not self._sessions:
-            # Sessions just emptied by stale pruning → enter stale idle
+            # Sessions just emptied by stale pruning → honor idle_mode for the
+            # no-session fallback.
             if pruned:
-                self._stale_idle = True
+                self._refresh_empty_fallback()
             # Stale idle: show dim breathing indefinitely instead of going
             # dark. Hidden while live sessions exist and cleared only when
-            # the last active session ends explicitly.
+            # idle_mode is explicitly set to "off".
             if self._stale_idle:
                 return "agent_idle", transient
             return "off", transient
@@ -417,10 +447,18 @@ class SessionTracker:
         best_priority = -1
         best_time = 0.0
         for entry in self._sessions.values():
-            p = STATE_PRIORITY.get(entry[0], 0)
+            # Per-session TTL decay: if the host tagged the message with
+            # ttl_s and that window has passed without a refresh, treat
+            # this session as agent_idle for priority purposes. The entry
+            # is kept so stale pruning still eventually removes it.
+            effective_state = entry[0]
+            ttl = entry[2]
+            if ttl is not None and ttl > 0 and (now - entry[1]) > ttl:
+                effective_state = "agent_idle"
+            p = STATE_PRIORITY.get(effective_state, 0)
             if p > best_priority or (p == best_priority and entry[1] > best_time):
                 best_priority = p
-                best_state = entry[0]
+                best_state = effective_state
                 best_time = entry[1]
 
         return best_state, transient
@@ -504,11 +542,24 @@ def read_serial(tracker):
                 msg = json.loads(line)
                 state = msg.get("state", "off")
                 session_id = msg.get("session")
+                ttl_s = msg.get("ttl_s")
+                if not isinstance(ttl_s, (int, float)) or ttl_s <= 0:
+                    ttl_s = None
+                idle_mode = msg.get("idle_mode")
+                if idle_mode not in ("breathing", "off"):
+                    idle_mode = None
                 if session_id is not None:
                     has_session_msgs = True
-                    tracker.update(str(session_id), state, now)
+                    tracker.update(
+                        str(session_id), state, now,
+                        ttl_s=ttl_s, idle_mode=idle_mode,
+                    )
                 else:
                     latest_bare_state = state
+                    # Even bare messages propagate idle_mode so the
+                    # preference survives firmware reloads.
+                    if idle_mode is not None:
+                        tracker._idle_mode = idle_mode  # noqa: SLF001
         except (ValueError, KeyError, UnicodeError):
             pass  # discard malformed lines
 
@@ -539,6 +590,7 @@ pixels.show()
 ring = StatusRing(pixels, NUM_PIXELS)
 tracker = SessionTracker()
 _consecutive_errors = 0
+_last_rx_monotonic = time.monotonic()  # for serial-silence watchdog
 
 # Enable hardware watchdog for automatic recovery from hangs
 if _WATCHDOG is not None and _WATCHDOG_RESET is not None:
@@ -551,6 +603,8 @@ while True:
     try:
         now = time.monotonic()
         has_sessions, bare_state, parsed_line = read_serial(tracker)
+        if parsed_line:
+            _last_rx_monotonic = now
         if has_sessions:
             _legacy_bare_state = None
         elif bare_state is not None and bare_state not in TRANSIENT_STATES:
@@ -601,6 +655,15 @@ while True:
 
     # Force full restart if the loop is persistently failing
     if _consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+        supervisor.reload()
+
+    # Serial-silence watchdog: if active sessions exist but we have not
+    # received a single parsed line in a long time, the USB CDC channel
+    # may be wedged (e.g. Windows selective suspend, CDC stall). Reload
+    # the firmware to re-enumerate; on boot the ring starts up and falls
+    # back to the breathing idle animation until new events arrive.
+    if (tracker.active_count > 0
+            and (time.monotonic() - _last_rx_monotonic) > SERIAL_SILENCE_TIMEOUT):
         supervisor.reload()
 
     # Feed the watchdog to prevent reset

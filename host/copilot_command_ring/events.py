@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 
-from .constants import ENV_CLI_PID, EVENT_STATE_MAP, STATE_IDLE
+from .constants import ENV_CLI_PID, EVENT_STATE_MAP, STATE_IDLE, STATE_TTL_DEFAULTS
 
 
 def _set_if(out: dict[str, object], key: str, value: object) -> None:
@@ -72,5 +72,12 @@ def normalize_event(
 
     # Session ID for multi-session firmware arbitration
     _set_if(out, "session", os.environ.get(ENV_CLI_PID))
+
+    # Optional TTL so the firmware can decay stuck persistent states to
+    # agent_idle if no refresh arrives within the window. Transient states
+    # and states without a default (e.g. agent_idle) omit the field.
+    ttl_s = STATE_TTL_DEFAULTS.get(out["state"])  # type: ignore[arg-type]
+    if ttl_s is not None:
+        out["ttl_s"] = ttl_s
 
     return out

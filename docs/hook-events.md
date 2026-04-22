@@ -38,7 +38,7 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `agentStop` | `agent_idle` | Dim breathing | White (dim) | `reason` |
 | `preCompact` | `compacting` | Wipe | Cyan | — |
 | `errorOccurred` | `error` | Flash (long) | Red | `error`, `message`, `recoverable`, `errorContext` |
-| `sessionEnd` | `off` | Off | — | `reason` |
+| `sessionEnd` | `off` (→ `agent_idle` unless `idle_mode="off"`) | Off or breathing | — | `reason` |
 | `notification` | `notify` | Flash (suppressed while busy) | White | `notification_type`, `message` |
 
 When a `notification` arrives while the winning persistent state is `working`, `subagent_active`, or `compacting`, the firmware suppresses the white flash and leaves the busy animation running.
@@ -47,28 +47,28 @@ When a `notification` arrives while the winning persistent state is `working`, `
 
 ## Example normalized messages
 
-These are the exact JSON Lines the host bridge sends over serial. Each is a single line terminated by `\n`.
+These are representative JSON Lines the host bridge sends over serial. `idle_mode` is injected on every message in real traffic, `ttl_s` appears on persistent states that auto-decay, and `session` is omitted below for readability. Each message is a single line terminated by `\n`.
 
 ### Session lifecycle
 
 ```json
-{"event":"sessionStart","state":"session_start"}
+{"event":"sessionStart","state":"session_start","ttl_s":60,"idle_mode":"breathing"}
 ```
 
 ```json
-{"event":"sessionEnd","state":"off","reason":"user_exit"}
+{"event":"sessionEnd","state":"off","reason":"user_exit","idle_mode":"breathing"}
 ```
 
 ### User input
 
 ```json
-{"event":"userPromptSubmitted","state":"prompt_submitted"}
+{"event":"userPromptSubmitted","state":"prompt_submitted","ttl_s":120,"idle_mode":"breathing"}
 ```
 
 ### Tool usage
 
 ```json
-{"event":"preToolUse","state":"working","tool":"edit"}
+{"event":"preToolUse","state":"working","tool":"edit","ttl_s":300,"idle_mode":"breathing"}
 ```
 
 ```json
@@ -147,6 +147,8 @@ The host still sends the normalized `notify` message above. Busy-state suppressi
 | `recoverable` | boolean | Whether the error is recoverable |
 | `notification_type` | string | Type of notification |
 | `message` | string | Notification message |
+| `ttl_s` | integer | Per-state decay window in seconds. The firmware treats a session's persistent state as `agent_idle` if no refresh arrives within this many seconds. Transient states and `agent_idle` itself have no TTL. |
+| `idle_mode` | string | What the ring should do when all sessions are gone: `"breathing"` (default, dim breathing forever) or `"off"` (fully dark). Injected by the host on every message so the firmware always has a fresh value, including immediately after a reload. |
 
 ---
 
@@ -174,3 +176,4 @@ This sends diagnostic output to **stderr only**.
 4. The host must exit quickly (target < 1 second total hook runtime).
 5. If no serial device is found, the hook exits silently — it must never block Copilot CLI.
 6. When the `session` field is present, firmware uses it for multi-session state arbitration. Messages without `session` are handled with legacy single-session behavior: the last persistent untagged state remains active until another persistent state replaces it, and untagged transient states flash on top of it once.
+7. `ttl_s` and `idle_mode` are optional and backward compatible — firmware that predates them simply ignores the extra keys.

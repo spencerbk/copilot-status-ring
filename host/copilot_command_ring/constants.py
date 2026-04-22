@@ -48,8 +48,40 @@ DEFAULT_BRIGHTNESS: Final[float] = 0.04
 DEFAULT_SERIAL_OPEN_TIMEOUT: Final[float] = 0.3
 DEFAULT_SERIAL_WRITE_TIMEOUT: Final[float] = 0.3
 DEFAULT_LOCK_TIMEOUT: Final[float] = 1.0
-DEFAULT_IDLE_MODE: Final[str] = "off"
+DEFAULT_IDLE_MODE: Final[str] = "breathing"
 DEFAULT_PIXEL_COUNT: Final[int] = 24
+
+# ---------------------------------------------------------------------------
+# Idle-mode values (carried in each outgoing message so the firmware can
+# honor the user's preference for what the ring does when a session ends).
+# ---------------------------------------------------------------------------
+IDLE_MODE_BREATHING: Final[str] = "breathing"
+IDLE_MODE_OFF: Final[str] = "off"
+VALID_IDLE_MODES: Final[frozenset[str]] = frozenset(
+    {IDLE_MODE_BREATHING, IDLE_MODE_OFF},
+)
+
+# ---------------------------------------------------------------------------
+# Per-state TTL defaults (seconds). The firmware decays any persistent state
+# to ``agent_idle`` if not refreshed within its TTL. States not listed here
+# are sent without a ``ttl_s`` field — the firmware treats them as having
+# no decay. Transient states never get a TTL.
+# ---------------------------------------------------------------------------
+STATE_TTL_DEFAULTS: Final[dict[str, int]] = {
+    "session_start": 60,
+    "prompt_submitted": 120,
+    "working": 300,
+    "awaiting_permission": 600,
+    "subagent_active": 300,
+    "compacting": 300,
+    "error": 60,
+}
+
+# ---------------------------------------------------------------------------
+# Host-side failure surfacing
+# ---------------------------------------------------------------------------
+CONSECUTIVE_FAILURE_THRESHOLD: Final[int] = 3
+FAILURE_COUNTER_FILENAME: Final[str] = "copilot-command-ring.failcount"
 
 # ---------------------------------------------------------------------------
 # Environment variable names
