@@ -22,6 +22,7 @@ from .constants import (
     ENV_DRY_RUN,
     ENV_LOCK_TIMEOUT,
     ENV_PORT,
+    VALID_IDLE_MODES,
 )
 from .logging_util import get_logger
 
@@ -170,6 +171,14 @@ def load_config(config_dir: Path | None = None) -> Config:
         log.debug("No config file (%s) found", CONFIG_FILE_NAME)
 
     _apply_env(cfg)
+
+    if cfg.idle_mode not in VALID_IDLE_MODES:
+        log.debug(
+            "Unknown idle_mode %r; falling back to default %r",
+            cfg.idle_mode,
+            DEFAULT_IDLE_MODE,
+        )
+        cfg.idle_mode = DEFAULT_IDLE_MODE
 
     log.debug(
         "Final config: port=%s baud=%d pixels=%d brightness=%.2f "

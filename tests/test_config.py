@@ -96,9 +96,29 @@ def test_config_file_overrides_brightness(tmp_path, monkeypatch):
 def test_config_file_overrides_idle_mode(tmp_path, monkeypatch):
     monkeypatch.delenv(ENV_PORT, raising=False)
     config_file = tmp_path / ".copilot-command-ring.local.json"
+    config_file.write_text(json.dumps({"idle_mode": "off"}), encoding="utf-8")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.idle_mode == "off"
+
+
+def test_invalid_idle_mode_normalizes_to_default(tmp_path, monkeypatch):
+    monkeypatch.delenv(ENV_PORT, raising=False)
+    config_file = tmp_path / ".copilot-command-ring.local.json"
     config_file.write_text(json.dumps({"idle_mode": "breathe"}), encoding="utf-8")
     cfg = load_config(config_dir=tmp_path)
-    assert cfg.idle_mode == "breathe"
+    assert cfg.idle_mode == DEFAULT_IDLE_MODE
+
+
+def test_breathing_idle_mode_accepted(tmp_path, monkeypatch):
+    monkeypatch.delenv(ENV_PORT, raising=False)
+    config_file = tmp_path / ".copilot-command-ring.local.json"
+    config_file.write_text(json.dumps({"idle_mode": "breathing"}), encoding="utf-8")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.idle_mode == "breathing"
+
+
+def test_default_idle_mode_is_breathing():
+    assert DEFAULT_IDLE_MODE == "breathing"
 
 
 def test_config_file_overrides_lock_timeout(tmp_path, monkeypatch):

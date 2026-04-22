@@ -15,6 +15,27 @@ import pytest
 from copilot_command_ring.serial_lock import SerialLock, _lock_path
 
 
+def _remove_lock_file() -> None:
+    path = _lock_path()
+    deadline = time.monotonic() + 1.0
+    while os.path.exists(path):
+        try:
+            os.unlink(path)
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.02)
+        else:
+            return
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_lock_file():
+    _remove_lock_file()
+    yield
+    _remove_lock_file()
+
+
 class TestSerialLockHappyPath:
     """Basic acquire / release cycle."""
 
@@ -63,6 +84,7 @@ class TestSerialLockTimeout:
 
         barrier.set()
         t.join(timeout=3.0)
+        assert not t.is_alive()
 
 
 class TestSerialLockConcurrency:
@@ -87,6 +109,8 @@ class TestSerialLockConcurrency:
         t2.start()
         t1.join(timeout=5.0)
         t2.join(timeout=5.0)
+        assert not t1.is_alive()
+        assert not t2.is_alive()
 
         # Both should have acquired (sequentially)
         assert lock_acquired_count == 2
@@ -197,3 +221,113 @@ class TestSerialLockErrorPaths:
         # Should not raise even though unlock fails
         with lock as acquired:
             assert acquired is True
+
+
+class TestSerialLockStaleSteal:
+    """Orphaned lock files (PID gone + old mtime) are stolen on timeout."""
+
+    def _write_stale_lock(self, pid: int, age_seconds: float) -> None:
+        path = _lock_path()
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(f"{pid} {time.time() - age_seconds:.3f}")
+        mtime = time.time() - age_seconds
+        os.utime(path, (mtime, mtime))
+
+    def test_stale_lock_from_dead_pid_is_stolen(self) -> None:
+        """A lock stamped with a dead PID and old mtime is recovered."""
+        # Make sure the lock file is not held open anywhere
+        _remove_lock_file()
+
+        # PID 0 is never a real process → considered dead.
+        self._write_stale_lock(pid=0, age_seconds=600.0)
+
+        lock = SerialLock(timeout=0.1)
+        with lock as acquired:
+            assert acquired is True
+
+    def test_recent_lock_is_not_stolen(self) -> None:
+        """A freshly stamped lock (even from a dead PID) is NOT stolen."""
+        import threading
+
+        _remove_lock_file()
+
+        held = threading.Event()
+        release = threading.Event()
+
+        def _hold() -> None:
+            inner = SerialLock(timeout=2.0)
+            with inner:
+                held.set()
+                release.wait(timeout=5.0)
+
+        t = threading.Thread(target=_hold, daemon=True)
+        t.start()
+        held.wait(timeout=3.0)
+
+        # A peer is holding the lock with a fresh stamp. A short-timeout
+        # acquire must NOT steal it.
+        lock = SerialLock(timeout=0.1)
+        with lock as acquired:
+            assert acquired is False
+
+        release.set()
+        t.join(timeout=3.0)
+        assert not t.is_alive()
+
+    def test_live_pid_lock_is_not_stolen_even_if_old(self) -> None:
+        """If the stamped PID is still alive, the lock is never stolen."""
+        _remove_lock_file()
+
+        # Use our own PID (definitely alive) but an ancient mtime.
+        self._write_stale_lock(pid=os.getpid(), age_seconds=10_000.0)
+
+        # Acquire — we can, because advisory locks are not held.
+        # But the stale-steal path must not trigger. We verify by
+        # checking a *contended* scenario: acquire from another fd.
+        import threading
+
+        held = threading.Event()
+        release = threading.Event()
+
+        def _hold() -> None:
+            # Overwrite the stale stamp with a fresh one by acquiring.
+            inner = SerialLock(timeout=2.0)
+            with inner:
+                # Force mtime back into the past to simulate a hung
+                # holder that stamped long ago.
+                try:
+                    mtime = time.time() - 10_000.0
+                    os.utime(_lock_path(), (mtime, mtime))
+                except OSError:
+                    pass
+                held.set()
+                release.wait(timeout=5.0)
+
+        t = threading.Thread(target=_hold, daemon=True)
+        t.start()
+        held.wait(timeout=3.0)
+
+        lock = SerialLock(timeout=0.1)
+        with lock as acquired:
+            # The "hung holder" is actually our own process → alive →
+            # must not be stolen.
+            assert acquired is False
+
+        release.set()
+        t.join(timeout=3.0)
+        assert not t.is_alive()
+
+    def test_lock_file_is_stamped_with_pid(self) -> None:
+        """After release, the lock file contains the caller's PID."""
+        path = _lock_path()
+        _remove_lock_file()
+
+        lock = SerialLock(timeout=1.0)
+        with lock as acquired:
+            assert acquired is True
+        # Read after release: on Windows the file handle is exclusive
+        # while the lock is held.
+        with open(path, encoding="utf-8") as fh:
+            content = fh.read().strip()
+        pid_str = content.split()[0]
+        assert int(pid_str) == os.getpid()

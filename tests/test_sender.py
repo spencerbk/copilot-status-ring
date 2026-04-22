@@ -4,9 +4,16 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from unittest.mock import MagicMock, patch
 
+import pytest
 from copilot_command_ring.config import Config
+from copilot_command_ring.constants import (
+    CONSECUTIVE_FAILURE_THRESHOLD,
+    FAILURE_COUNTER_FILENAME,
+)
 from copilot_command_ring.protocol import serialize_message
 from copilot_command_ring.sender import send_event
 
@@ -20,6 +27,17 @@ def _make_config(**overrides: object) -> Config:
     }
     defaults.update(overrides)
     return Config(**defaults)  # type: ignore[arg-type]
+
+
+@pytest.fixture(autouse=True)
+def _reset_failure_counter() -> object:
+    """Clear the cross-process failure counter before each test."""
+    path = os.path.join(tempfile.gettempdir(), FAILURE_COUNTER_FILENAME)
+    if os.path.exists(path):
+        os.unlink(path)
+    yield
+    if os.path.exists(path):
+        os.unlink(path)
 
 
 SAMPLE_MESSAGE: dict[str, object] = {"event": "sessionStart", "state": "session_start"}
@@ -126,7 +144,8 @@ class TestSendEventSuccess:
         ):
             send_event(config, SAMPLE_MESSAGE)
 
-        expected_data = serialize_message(SAMPLE_MESSAGE)
+        # idle_mode is injected into every message before serialization.
+        expected_data = serialize_message({**SAMPLE_MESSAGE, "idle_mode": config.idle_mode})
         mock_ser.write.assert_called_once_with(expected_data)
 
     def test_uses_configured_lock_timeout(self) -> None:
@@ -225,3 +244,178 @@ class TestSendEventLockTimeout:
             assert send_event(config, SAMPLE_MESSAGE) is False
 
         fake_serial.Serial.assert_not_called()
+
+
+class TestIdleModeInjection:
+    """Every outgoing message carries the resolved idle_mode."""
+
+    def _fake_serial_success(self) -> tuple[MagicMock, MagicMock]:
+        mock_ser = MagicMock()
+        fake_serial = MagicMock()
+        fake_serial.Serial.return_value.__enter__ = MagicMock(return_value=mock_ser)
+        fake_serial.Serial.return_value.__exit__ = MagicMock(return_value=False)
+        fake_serial.SerialException = OSError
+        fake_serial.SerialTimeoutException = OSError
+        return mock_ser, fake_serial
+
+    def test_breathing_is_injected_by_default(self) -> None:
+        config = _make_config(idle_mode="breathing")
+        mock_ser, fake_serial = self._fake_serial_success()
+        with (
+            patch("copilot_command_ring.sender.serial", fake_serial),
+            patch(
+                "copilot_command_ring.sender.detect_serial_port",
+                return_value="COM7",
+            ),
+        ):
+            send_event(config, dict(SAMPLE_MESSAGE))
+
+        sent = mock_ser.write.call_args[0][0].decode("utf-8")
+        assert '"idle_mode":"breathing"' in sent
+
+    def test_off_mode_is_injected(self) -> None:
+        config = _make_config(idle_mode="off")
+        mock_ser, fake_serial = self._fake_serial_success()
+        with (
+            patch("copilot_command_ring.sender.serial", fake_serial),
+            patch(
+                "copilot_command_ring.sender.detect_serial_port",
+                return_value="COM7",
+            ),
+        ):
+            send_event(config, dict(SAMPLE_MESSAGE))
+
+        sent = mock_ser.write.call_args[0][0].decode("utf-8")
+        assert '"idle_mode":"off"' in sent
+
+    def test_existing_idle_mode_is_preserved(self) -> None:
+        config = _make_config(idle_mode="breathing")
+        mock_ser, fake_serial = self._fake_serial_success()
+        message: dict[str, object] = {**SAMPLE_MESSAGE, "idle_mode": "off"}
+        with (
+            patch("copilot_command_ring.sender.serial", fake_serial),
+            patch(
+                "copilot_command_ring.sender.detect_serial_port",
+                return_value="COM7",
+            ),
+        ):
+            send_event(config, message)
+
+        sent = mock_ser.write.call_args[0][0].decode("utf-8")
+        assert '"idle_mode":"off"' in sent
+        assert '"idle_mode":"breathing"' not in sent
+
+    def test_caller_message_is_not_mutated(self) -> None:
+        config = _make_config(idle_mode="breathing")
+        mock_ser, fake_serial = self._fake_serial_success()
+        message = dict(SAMPLE_MESSAGE)
+        with (
+            patch("copilot_command_ring.sender.serial", fake_serial),
+            patch(
+                "copilot_command_ring.sender.detect_serial_port",
+                return_value="COM7",
+            ),
+        ):
+            send_event(config, message)
+
+        assert "idle_mode" not in message
+
+    def test_dry_run_logs_idle_mode(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Force the module logger to INFO so the dry-run log line is emitted.
+        import copilot_command_ring.logging_util as log_mod
+
+        monkeypatch.setenv("COPILOT_RING_LOG_LEVEL", "INFO")
+        monkeypatch.setattr(log_mod, "_logger", None)
+
+        config = _make_config(dry_run=True, idle_mode="breathing")
+        send_event(config, dict(SAMPLE_MESSAGE))
+        captured = capsys.readouterr()
+        assert "idle_mode" in captured.err
+        assert "breathing" in captured.err
+
+        # Reset the cached logger so later tests get a fresh one at the
+        # default level.
+        monkeypatch.setattr(log_mod, "_logger", None)
+
+
+class TestFailureCounterWarning:
+    """Consecutive failures emit a one-shot stderr WARNING at the threshold."""
+
+    def _fake_serial_failing(self) -> MagicMock:
+        fake_serial = MagicMock()
+        fake_serial.Serial.side_effect = OSError("device not found")
+        fake_serial.SerialException = OSError
+        fake_serial.SerialTimeoutException = OSError
+        return fake_serial
+
+    def test_warning_after_threshold(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        config = _make_config()
+        fake_serial = self._fake_serial_failing()
+        with (
+            patch("copilot_command_ring.sender.serial", fake_serial),
+            patch(
+                "copilot_command_ring.sender.detect_serial_port",
+                return_value="COM7",
+            ),
+        ):
+            for _ in range(CONSECUTIVE_FAILURE_THRESHOLD):
+                assert send_event(config, SAMPLE_MESSAGE) is False
+
+        captured = capsys.readouterr()
+        assert captured.err.count("WARNING") == 1
+        assert "consecutive send failures" in captured.err
+
+    def test_warning_fires_only_once(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        config = _make_config()
+        fake_serial = self._fake_serial_failing()
+        total_fails = CONSECUTIVE_FAILURE_THRESHOLD + 3
+        with (
+            patch("copilot_command_ring.sender.serial", fake_serial),
+            patch(
+                "copilot_command_ring.sender.detect_serial_port",
+                return_value="COM7",
+            ),
+        ):
+            for _ in range(total_fails):
+                send_event(config, SAMPLE_MESSAGE)
+
+        captured = capsys.readouterr()
+        assert captured.err.count("WARNING") == 1
+
+    def test_success_resets_counter(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        config = _make_config()
+        fail_serial = self._fake_serial_failing()
+
+        mock_ser = MagicMock()
+        ok_serial = MagicMock()
+        ok_serial.Serial.return_value.__enter__ = MagicMock(return_value=mock_ser)
+        ok_serial.Serial.return_value.__exit__ = MagicMock(return_value=False)
+        ok_serial.SerialException = OSError
+        ok_serial.SerialTimeoutException = OSError
+
+        # (THRESHOLD - 1) failures, then success, then (THRESHOLD - 1) failures.
+        # Without a reset this would warn; with a reset it must stay silent.
+        with patch(
+            "copilot_command_ring.sender.detect_serial_port", return_value="COM7",
+        ):
+            with patch("copilot_command_ring.sender.serial", fail_serial):
+                for _ in range(CONSECUTIVE_FAILURE_THRESHOLD - 1):
+                    send_event(config, SAMPLE_MESSAGE)
+            with patch("copilot_command_ring.sender.serial", ok_serial):
+                assert send_event(config, SAMPLE_MESSAGE) is True
+            with patch("copilot_command_ring.sender.serial", fail_serial):
+                for _ in range(CONSECUTIVE_FAILURE_THRESHOLD - 1):
+                    send_event(config, SAMPLE_MESSAGE)
+
+        captured = capsys.readouterr()
+        assert "WARNING" not in captured.err

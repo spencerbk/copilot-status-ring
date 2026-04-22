@@ -140,7 +140,7 @@ This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run
 
 > **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring deploy <path> --force` in that repo to update the recorded Python path.
 
-> **Tip:** The deployed hooks auto-detect your board — no port configuration needed. Start a Copilot CLI session and the ring lights up.
+> **Tip:** The deployed hooks auto-detect your board — no port configuration needed. The ring idles in a dim breathing state by default, then switches to active states as soon as a Copilot CLI session starts.
 
 ## Configuration
 
@@ -166,7 +166,7 @@ Create `.copilot-command-ring.local.json` in the repo root (git-ignored):
   "baud": 115200,
   "brightness": 0.04,
   "lock_timeout": 1.0,
-  "idle_mode": "off",
+  "idle_mode": "breathing",
   "device_match": {
     "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial", "Seeed"]
   }
@@ -174,6 +174,15 @@ Create `.copilot-command-ring.local.json` in the repo root (git-ignored):
 ```
 
 The serial port is auto-detected by default. Add `"serial_port": "COM7"` only if auto-detection doesn't find your board.
+
+`idle_mode` controls what the ring does when every Copilot session has ended or gone silent:
+
+| Value | Behavior |
+|-------|----------|
+| `breathing` *(default)* | Ring shows a dim breathing animation indefinitely. Never goes dark on its own — the next session picks up instantly. |
+| `off` | Ring goes fully dark on `sessionEnd` or stale prune. Matches the pre-v1.2 behavior. |
+
+Unknown values are logged and normalized back to `breathing`.
 
 ## Hook Event Mapping
 
@@ -193,7 +202,7 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 | `preCompact` | `compacting` | wipe | cyan |
 | `errorOccurred` | `error` | flash | red |
 | `notification` | `notify` | flash (suppressed while busy) | white |
-| `sessionEnd` | `off` | off | — |
+| `sessionEnd` | `off` → `agent_idle` (breathing) | off / breathing | — |
 
 When a `notification` arrives while the ring is already showing `working`, `subagent_active`, or `compacting`, the firmware keeps the busy animation instead of interrupting it with a white flash.
 
@@ -313,7 +322,7 @@ Quick checks:
 - **Ring not responding?** Verify the serial port with `COPILOT_RING_LOG_LEVEL=DEBUG` and check the connection.
 - **No hooks firing?** Run `copilot-command-ring setup` (global, recommended) or `copilot-command-ring deploy <path>` (per-repo). See [Quick Start](#quick-start) step 3.
 - **Permission errors on serial port?** On Linux, add your user to the `dialout` group. On macOS, check `/dev/tty.*` permissions.
-- **Multiple sessions?** Concurrent Copilot CLI sessions on the same machine are fully supported. The firmware tracks each session independently and displays the highest-priority state across all active sessions. When one session ends, the ring seamlessly continues showing the remaining sessions' state. If all sessions go idle (no hook events for 5 minutes), the ring transitions to a dim breathing animation and stays there until a new event arrives or an explicit `sessionEnd` turns it off — it will not go dark on its own. A file lock prevents serial corruption.
+- **Multiple sessions?** Concurrent Copilot CLI sessions on the same machine are fully supported. The firmware tracks each session independently and displays the highest-priority state across all active sessions. When one session ends, the ring seamlessly continues showing the remaining sessions' state. If all sessions go idle (no hook events for 5 minutes) or end explicitly via `sessionEnd`, the ring transitions to a dim breathing animation and stays there until a new event arrives — it will not go dark on its own. Persistent states (e.g. `working`, `awaiting_permission`) carry a TTL so a crashed or killed session decays to breathing on-device without waiting for the full stale-prune window. Set `idle_mode` to `"off"` in the config file if you prefer the ring to go fully dark when the last session ends. A file lock prevents serial corruption.
 
 See also: [`docs/setup-windows.md`](docs/setup-windows.md) · [`docs/setup-macos.md`](docs/setup-macos.md) · [`docs/setup-linux.md`](docs/setup-linux.md)
 

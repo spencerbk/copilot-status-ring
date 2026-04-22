@@ -185,16 +185,21 @@ export COPILOT_RING_BRIGHTNESS=0.15
 
 ## Ring becomes unresponsive after long sessions
 
-If the Pico or other CircuitPython board stops responding and only recovers after a reset, update to the latest `firmware/circuitpython/code.py`.
+If the ring appears stuck (frozen spinner, last-seen state lingering, or unresponsive to new events) during a long session, update to the latest `firmware/circuitpython/code.py`. Older firmware could go fully dark on `sessionEnd` and stay that way until power-cycle; current firmware instead breathes indefinitely and self-heals from wedged USB CDC.
 
 Recent firmware versions include several safeguards for long-running sessions:
 
-- A capped byte buffer so malformed or partial serial data without a newline cannot grow forever in RAM
-- Draining all queued JSON lines each loop so valid traffic cannot backlog indefinitely in memory
-- Reading buffered serial data regardless of USB connection state so messages are never lost between rapid hook invocations
-- Clearing stale partial input only on USB reconnect (not on momentary disconnects between hook calls)
-- Running `gc.collect()` after serial parsing work to reclaim memory from parsed JSON dicts
-- Using a watchdog plus firmware reload path so repeated loop failures recover automatically
+- `sessionEnd` and stale-session pruning fall back to a dim breathing animation instead of going dark. The ring only turns fully off when the host config sets `idle_mode` to `"off"`.
+- Per-state TTL decay: a crashed session stuck on `working` or `awaiting_permission` automatically decays to `agent_idle` after a few minutes, even if no further messages arrive.
+- Serial-silence watchdog: if active sessions exist but the firmware receives zero bytes for 10 minutes, it reloads to recover from a wedged USB CDC channel (common on Windows with USB selective suspend).
+- A capped byte buffer so malformed or partial serial data without a newline cannot grow forever in RAM.
+- Draining all queued JSON lines each loop so valid traffic cannot backlog indefinitely in memory.
+- Reading buffered serial data regardless of USB connection state so messages are never lost between rapid hook invocations.
+- Clearing stale partial input only on USB reconnect (not on momentary disconnects between hook calls).
+- Running `gc.collect()` after serial parsing work to reclaim memory from parsed JSON dicts.
+- Using a watchdog plus firmware reload path so repeated loop failures recover automatically.
+
+**Windows USB selective suspend:** Windows aggressively suspends idle USB devices, which can wedge the CDC data channel. The firmware silence watchdog detects and recovers from this. To prevent it entirely, open **Device Manager → Universal Serial Bus controllers**, right-click each **USB Root Hub**, choose **Properties → Power Management**, and uncheck *Allow the computer to turn off this device to save power*.
 
 **If you may be running older firmware:**
 
@@ -207,6 +212,20 @@ Recent firmware versions include several safeguards for long-running sessions:
 - Open the CircuitPython console port and look for a `MemoryError` traceback.
 - Check that `neopixel.mpy` matches your installed CircuitPython version.
 - If you changed the firmware, confirm there are no extra debug prints or large buffers added to `code.py`.
+
+---
+
+## Ring appears offline / hook silently doing nothing
+
+Copilot hooks are fire-and-forget — individual send failures are logged at `DEBUG` level and suppressed by default so they never block the CLI. If the ring seems offline, you may see no output at all at the default log level.
+
+The host bridge now surfaces a one-shot stderr `WARNING` after three consecutive send failures, so persistent breakage becomes visible without needing to change the log level:
+
+```
+[copilot-command-ring] WARNING: 3 consecutive send failures — ring may be offline. Run with COPILOT_RING_LOG_LEVEL=DEBUG for details.
+```
+
+If you see this, run a Copilot CLI session with `COPILOT_RING_LOG_LEVEL=DEBUG` to see the full error (port not detected, lock timeout, `SerialException`, etc.). The warning fires once per streak; a successful send resets the counter.
 
 ---
 
@@ -358,7 +377,7 @@ The host bridge tags every serial message with a session identifier (the Copilot
 - ✅ The ring displays the most "interesting" state across all active sessions — for example, if one session is working and another is idle, the ring shows the working spinner.
 - ✅ When a session ends, the ring seamlessly continues showing the remaining sessions' state instead of going dark.
 - ⚠️ The ring cannot display two sessions simultaneously as separate animations — it shows the single highest-priority state.
-- ⚠️ If a Copilot CLI crashes without sending `sessionEnd`, the firmware prunes the stale session after 5 minutes. Once all sessions are pruned, the ring shows a dim breathing animation (`agent_idle`) indefinitely — it will not go dark on its own. The ring only turns fully off in response to an explicit `sessionEnd` or a board reset. This means a ring that is breathing when no CLI is running is expected; start a new session to reset state, or power-cycle the board.
+- ⚠️ If a Copilot CLI crashes without sending `sessionEnd`, the firmware prunes the stale session after 5 minutes. Once all sessions are pruned — or when a session ends explicitly with `sessionEnd` — the ring shows a dim breathing animation (`agent_idle`) indefinitely so it is never dark by surprise. The next Copilot session lights it back up instantly. To revert to the pre-v1.2 behavior where `sessionEnd` turns the ring fully dark, set `"idle_mode": "off"` in `.copilot-command-ring.local.json`. Power-cycling is no longer required for recovery.
 
 **If the ring seems stuck or unresponsive during multi-session use:**
 
