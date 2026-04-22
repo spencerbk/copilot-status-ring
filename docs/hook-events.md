@@ -173,4 +173,4 @@ This sends diagnostic output to **stderr only**.
 3. Unknown `state` values must not crash firmware — fall back to idle/off.
 4. The host must exit quickly (target < 1 second total hook runtime).
 5. If no serial device is found, the hook exits silently — it must never block Copilot CLI.
-6. When the `session` field is present, firmware uses it for multi-session state arbitration. Messages without `session` are handled with legacy single-session behavior.
+6. When the `session` field is present, firmware uses it for multi-session state arbitration. Messages without `session` are handled with legacy single-session behavior: the last persistent untagged state remains active until another persistent state replaces it, and untagged transient states flash on top of it once.

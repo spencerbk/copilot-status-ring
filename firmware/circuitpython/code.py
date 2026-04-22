@@ -168,7 +168,14 @@ class StatusRing:
 
         # Returning from a transient flash to the same persistent state —
         # restore saved animation timing so the spinner continues seamlessly.
+        # Wait for the flash animation to finish before restoring, otherwise
+        # the main loop's repeated set_state(winning) calls cut it to 1 frame.
         if self.state in TRANSIENT_STATES and new_state == self._saved_state:
+            entry = STATE_MAP.get(self.state)
+            if entry is not None:
+                duration = entry[2].get("duration", 0.3)
+                if (time.monotonic() - self.state_start) < duration:
+                    return
             self.prev_state = new_state
             self.state = new_state
             self.state_start = self._saved_start
@@ -326,10 +333,21 @@ class SessionTracker:
     def __init__(self):
         self._sessions = {}   # {session_id: [persistent_state, last_seen]}
         self._pending_transient = None
+        self._stale_idle = False  # True when sessions emptied by stale pruning
 
     @property
     def active_count(self):
         return len(self._sessions)
+
+    @property
+    def stale_idle(self):
+        """True when all sessions were pruned by stale timeout.
+
+        Masked while live sessions exist and cleared by an explicit
+        sessionEnd when no sessions remain. No upper bound — ring
+        breathes indefinitely.
+        """
+        return self._stale_idle and not self._sessions
 
     def update(self, session_id, state, now):
         """Register or update a session's state.
@@ -347,6 +365,9 @@ class SessionTracker:
 
         if state == "off":
             self._sessions.pop(session_id, None)
+            # Explicit end: if no sessions remain, do NOT enter stale idle
+            if not self._sessions:
+                self._stale_idle = False
         else:
             if session_id in self._sessions:
                 entry = self._sessions[session_id]
@@ -372,14 +393,24 @@ class SessionTracker:
         then picks the highest-priority persistent state.
         """
         # Prune stale sessions
+        pruned = False
         for sid in list(self._sessions):
             if now - self._sessions[sid][1] > STALE_TIMEOUT:
                 del self._sessions[sid]
+                pruned = True
 
         transient = self._pending_transient
         self._pending_transient = None
 
         if not self._sessions:
+            # Sessions just emptied by stale pruning → enter stale idle
+            if pruned:
+                self._stale_idle = True
+            # Stale idle: show dim breathing indefinitely instead of going
+            # dark. Hidden while live sessions exist and cleared only when
+            # the last active session ends explicitly.
+            if self._stale_idle:
+                return "agent_idle", transient
             return "off", transient
 
         best_state = "off"
@@ -399,6 +430,7 @@ class SessionTracker:
 
 serial = usb_cdc.data
 _serial_buf = bytearray()
+_legacy_bare_state = None  # persistent fallback for untagged legacy messages
 _was_connected = True
 
 
@@ -519,17 +551,37 @@ while True:
     try:
         now = time.monotonic()
         has_sessions, bare_state, parsed_line = read_serial(tracker)
+        if has_sessions:
+            _legacy_bare_state = None
+        elif bare_state is not None and bare_state not in TRANSIENT_STATES:
+            _legacy_bare_state = bare_state
 
-        # Resolve session priority whenever sessions exist — not only
-        # when a new message arrived.  This ensures stale-session pruning
-        # runs even if no further messages come (e.g. lost "off" event).
+        # Resolve session priority whenever live session-tagged messages exist
+        # — not only when a new message arrived.  This ensures stale-session
+        # pruning runs even if no further messages come (e.g. lost "off"
+        # event). Preserve persistent legacy bare-state handling ahead of
+        # stale-idle fallback so mixed tagged/untagged traffic still shows
+        # current work.
         if has_sessions or tracker.active_count > 0:
             winning, transient = tracker.resolve(now)
             ring.set_state(winning)
             if should_apply_transient(winning, transient):
                 ring.set_state(transient)
-        elif bare_state is not None:
-            ring.set_state(bare_state)
+        elif _legacy_bare_state is not None:
+            ring.set_state(_legacy_bare_state)
+            if (bare_state in TRANSIENT_STATES
+                    and should_apply_transient(_legacy_bare_state, bare_state)):
+                ring.set_state(bare_state)
+        elif bare_state in TRANSIENT_STATES:
+            # Legacy transient with no persistent bare state — overlay once
+            # on top of whatever the ring is currently showing.
+            if should_apply_transient(ring.state, bare_state):
+                ring.set_state(bare_state)
+        elif tracker.stale_idle:
+            winning, transient = tracker.resolve(now)
+            ring.set_state(winning)
+            if should_apply_transient(winning, transient):
+                ring.set_state(transient)
 
         ring.tick(now)
         if parsed_line:

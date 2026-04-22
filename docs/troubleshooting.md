@@ -358,7 +358,7 @@ The host bridge tags every serial message with a session identifier (the Copilot
 - ✅ The ring displays the most "interesting" state across all active sessions — for example, if one session is working and another is idle, the ring shows the working spinner.
 - ✅ When a session ends, the ring seamlessly continues showing the remaining sessions' state instead of going dark.
 - ⚠️ The ring cannot display two sessions simultaneously as separate animations — it shows the single highest-priority state.
-- ⚠️ If a Copilot CLI crashes without sending `sessionEnd`, the firmware prunes the stale session after 5 minutes.
+- ⚠️ If a Copilot CLI crashes without sending `sessionEnd`, the firmware prunes the stale session after 5 minutes. Once all sessions are pruned, the ring shows a dim breathing animation (`agent_idle`) indefinitely — it will not go dark on its own. The ring only turns fully off in response to an explicit `sessionEnd` or a board reset. This means a ring that is breathing when no CLI is running is expected; start a new session to reset state, or power-cycle the board.
 
 **If the ring seems stuck or unresponsive during multi-session use:**
 
