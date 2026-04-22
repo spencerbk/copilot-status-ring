@@ -5,8 +5,11 @@
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import time
+import types
+from unittest.mock import MagicMock, patch
 
 import pytest
 from copilot_command_ring.serial_lock import SerialLock, _lock_path
@@ -114,3 +117,83 @@ class TestSerialLockFilePath:
         path = _lock_path()
         assert path.startswith(tempfile.gettempdir())
         assert "copilot-command-ring" in path
+
+
+class TestSerialLockErrorPaths:
+    """Cover error and platform-specific branches in _acquire / _release."""
+
+    def test_os_open_failure_returns_false(self) -> None:
+        """OSError from os.open() → _acquire returns False."""
+        target = "copilot_command_ring.serial_lock.os.open"
+        with patch(target, side_effect=OSError("Permission denied")):
+            lock = SerialLock(timeout=1.0)
+            with lock as acquired:
+                assert acquired is False
+
+    def test_fcntl_acquire_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Non-Windows acquire path calls fcntl.flock(fd, LOCK_EX | LOCK_NB)."""
+        fake_fcntl = types.ModuleType("fcntl")
+        fake_fcntl.LOCK_EX = 2  # type: ignore[attr-defined]
+        fake_fcntl.LOCK_NB = 4  # type: ignore[attr-defined]
+        fake_fcntl.LOCK_UN = 8  # type: ignore[attr-defined]
+        fake_fcntl.flock = MagicMock()  # type: ignore[attr-defined]
+
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setitem(sys.modules, "fcntl", fake_fcntl)
+
+        lock = SerialLock(timeout=1.0)
+        with lock as acquired:
+            assert acquired is True
+            # flock should have been called with LOCK_EX | LOCK_NB
+            fake_fcntl.flock.assert_called_once()
+            call_args = fake_fcntl.flock.call_args[0]
+            assert call_args[1] == fake_fcntl.LOCK_EX | fake_fcntl.LOCK_NB
+
+    def test_fcntl_release_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Non-Windows release path calls fcntl.flock(fd, LOCK_UN)."""
+        fake_fcntl = types.ModuleType("fcntl")
+        fake_fcntl.LOCK_EX = 2  # type: ignore[attr-defined]
+        fake_fcntl.LOCK_NB = 4  # type: ignore[attr-defined]
+        fake_fcntl.LOCK_UN = 8  # type: ignore[attr-defined]
+        fake_fcntl.flock = MagicMock()  # type: ignore[attr-defined]
+
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setitem(sys.modules, "fcntl", fake_fcntl)
+
+        lock = SerialLock(timeout=1.0)
+        with lock as acquired:
+            assert acquired is True
+
+        # After context exit, flock should have been called with LOCK_UN
+        unlock_calls = [
+            c for c in fake_fcntl.flock.call_args_list
+            if c[0][1] == fake_fcntl.LOCK_UN
+        ]
+        assert len(unlock_calls) == 1
+
+    def test_release_oserror_suppressed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """OSError during unlock is silently suppressed (best-effort)."""
+        fake_fcntl = types.ModuleType("fcntl")
+        fake_fcntl.LOCK_EX = 2  # type: ignore[attr-defined]
+        fake_fcntl.LOCK_NB = 4  # type: ignore[attr-defined]
+        fake_fcntl.LOCK_UN = 8  # type: ignore[attr-defined]
+
+        call_count = 0
+
+        def _flock(fd: int, operation: int) -> None:
+            nonlocal call_count
+            call_count += 1
+            # First call is acquire (LOCK_EX|LOCK_NB) — succeed.
+            # Second call is release (LOCK_UN) — raise OSError.
+            if operation == fake_fcntl.LOCK_UN:
+                raise OSError("Device not configured")
+
+        fake_fcntl.flock = _flock  # type: ignore[attr-defined]
+
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setitem(sys.modules, "fcntl", fake_fcntl)
+
+        lock = SerialLock(timeout=1.0)
+        # Should not raise even though unlock fails
+        with lock as acquired:
+            assert acquired is True

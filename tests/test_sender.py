@@ -48,6 +48,24 @@ class TestSendEventNoSerial:
             assert send_event(config, SAMPLE_MESSAGE) is False
 
 
+class TestSendEventImportFallback:
+    """When pyserial cannot be imported, the module sets serial = None."""
+
+    def test_import_error_sets_serial_to_none(self) -> None:
+        import importlib
+
+        import copilot_command_ring.sender as sender_mod
+
+        original_serial = sender_mod.serial
+        try:
+            with patch.dict("sys.modules", {"serial": None}):
+                importlib.reload(sender_mod)
+            assert sender_mod.serial is None
+        finally:
+            sender_mod.serial = original_serial
+            importlib.reload(sender_mod)
+
+
 class TestSendEventNoPort:
     """When no serial port is detected, send_event returns False."""
 

@@ -335,13 +335,15 @@ class TestCLI:
     """Tests for the copilot-command-ring CLI entry point."""
 
     def _cli_env(self, **extra: str) -> dict[str, str]:
-        """Return a minimal env dict with PYTHONPATH pointing at host/."""
+        """Return env dict with PYTHONPATH pointing at host/.
+
+        Start from the full os.environ so Windows-specific variables
+        needed for subprocess handle management are preserved.
+        """
         import os
 
-        env = {
-            "PYTHONPATH": str(HOST_DIR),
-            "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
-        }
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(HOST_DIR)
         env.update(extra)
         return env
 
@@ -352,6 +354,7 @@ class TestCLI:
             text=True,
             timeout=10,
             env=self._cli_env(),
+            stdin=subprocess.DEVNULL,
         )
         assert result.returncode == 0
         assert (tmp_path / ".github" / "hooks" / "copilot-command-ring.json").is_file()
@@ -375,6 +378,7 @@ class TestCLI:
             text=True,
             timeout=10,
             env=self._cli_env(),
+            stdin=subprocess.DEVNULL,
         )
         assert result.returncode == 0
 
@@ -391,6 +395,7 @@ class TestCLI:
             text=True,
             timeout=10,
             env=self._cli_env(),
+            stdin=subprocess.DEVNULL,
         )
         assert result.returncode == 1
 
@@ -404,6 +409,7 @@ class TestCLI:
             text=True,
             timeout=10,
             env=self._cli_env(COPILOT_HOME=str(tmp_path)),
+            stdin=subprocess.DEVNULL,
         )
         assert result.returncode == 0
         assert (tmp_path / "hooks" / "copilot-command-ring.json").is_file()
