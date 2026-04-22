@@ -127,6 +127,7 @@ STATE_PRIORITY = {
 }
 MAX_SESSIONS = 8
 STALE_TIMEOUT = 300  # seconds before an idle session is pruned
+HARD_OFF_TIMEOUT = 3600  # seconds of stale-idle before ring goes truly dark
 
 
 def should_apply_transient(persistent_state, transient):
@@ -333,10 +334,24 @@ class SessionTracker:
     def __init__(self):
         self._sessions = {}   # {session_id: [persistent_state, last_seen]}
         self._pending_transient = None
+        self._last_active_time = 0.0  # last time any session was active
+        self._stale_idle = False  # True when sessions emptied by stale pruning
 
     @property
     def active_count(self):
         return len(self._sessions)
+
+    @property
+    def stale_idle(self):
+        """True during the post-stale breathing window (before hard off)."""
+        if self._sessions or not self._stale_idle:
+            return False
+        return (time.monotonic() - self._last_active_time) < HARD_OFF_TIMEOUT
+
+    @property
+    def had_sessions(self):
+        """True if any session was ever tracked."""
+        return self._last_active_time > 0.0
 
     def update(self, session_id, state, now):
         """Register or update a session's state.
@@ -352,8 +367,13 @@ class SessionTracker:
                 self._sessions[session_id][1] = now
             return
 
+        self._last_active_time = now
+
         if state == "off":
             self._sessions.pop(session_id, None)
+            # Explicit end: if no sessions remain, do NOT enter stale idle
+            if not self._sessions:
+                self._stale_idle = False
         else:
             if session_id in self._sessions:
                 entry = self._sessions[session_id]
@@ -379,14 +399,24 @@ class SessionTracker:
         then picks the highest-priority persistent state.
         """
         # Prune stale sessions
+        pruned = False
         for sid in list(self._sessions):
             if now - self._sessions[sid][1] > STALE_TIMEOUT:
                 del self._sessions[sid]
+                pruned = True
 
         transient = self._pending_transient
         self._pending_transient = None
 
         if not self._sessions:
+            # Sessions just emptied by stale pruning → enter stale idle
+            if pruned:
+                self._stale_idle = True
+            # Stale idle window: show dim breathing instead of going dark
+            if (self._stale_idle
+                    and self._last_active_time > 0.0
+                    and (now - self._last_active_time) < HARD_OFF_TIMEOUT):
+                return "agent_idle", transient
             return "off", transient
 
         best_state = "off"
@@ -527,9 +557,11 @@ while True:
         now = time.monotonic()
         has_sessions, bare_state, parsed_line = read_serial(tracker)
 
-        # Resolve session priority whenever sessions exist — not only
-        # when a new message arrived.  This ensures stale-session pruning
-        # runs even if no further messages come (e.g. lost "off" event).
+        # Resolve session priority whenever live session-tagged messages exist
+        # — not only when a new message arrived.  This ensures stale-session
+        # pruning runs even if no further messages come (e.g. lost "off"
+        # event). Preserve legacy bare-state handling ahead of stale-idle
+        # fallback so mixed tagged/untagged traffic still shows current work.
         if has_sessions or tracker.active_count > 0:
             winning, transient = tracker.resolve(now)
             ring.set_state(winning)
@@ -537,6 +569,14 @@ while True:
                 ring.set_state(transient)
         elif bare_state is not None:
             ring.set_state(bare_state)
+        elif tracker.stale_idle:
+            winning, transient = tracker.resolve(now)
+            ring.set_state(winning)
+            if should_apply_transient(winning, transient):
+                ring.set_state(transient)
+        elif tracker.had_sessions and ring.state == "agent_idle":
+            # Hard off timeout expired after stale idle — go dark
+            ring.set_state("off")
 
         ring.tick(now)
         if parsed_line:

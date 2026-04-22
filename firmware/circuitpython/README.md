@@ -17,7 +17,7 @@ CircuitPython firmware for the Copilot Command Ring.
 ## Files
 
 - `boot.py` — Sets custom USB product name ("Copilot Command Ring") and enables `usb_cdc.data` for host communication.
-- `code.py` — Main firmware with state machine and animations. Tracks multiple concurrent Copilot CLI sessions and displays the highest-priority state across all of them. For long-running sessions on small boards such as the Pico, it drains queued JSON-line serial input each loop, reads buffered data regardless of USB connection state (so messages are never lost between rapid hook invocations), clears stale partial input only on USB reconnect, runs garbage collection after serial parsing work, and uses watchdog/reload recovery when supported.
+- `code.py` — Main firmware with state machine and animations. Tracks multiple concurrent Copilot CLI sessions and displays the highest-priority state across all of them. Includes two-tier stale-idle behavior: sessions with no messages for 5 minutes are pruned, and if all sessions are stale the ring shows a dim breathing animation for up to 1 hour before going fully dark. For long-running sessions on small boards such as the Pico, it drains queued JSON-line serial input each loop, reads buffered data regardless of USB connection state (so messages are never lost between rapid hook invocations), clears stale partial input only on USB reconnect, runs garbage collection after serial parsing work, and uses watchdog/reload recovery when supported.
 
 ## Pin configuration
 

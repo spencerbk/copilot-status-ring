@@ -313,7 +313,7 @@ Quick checks:
 - **Ring not responding?** Verify the serial port with `COPILOT_RING_LOG_LEVEL=DEBUG` and check the connection.
 - **No hooks firing?** Run `copilot-command-ring setup` (global, recommended) or `copilot-command-ring deploy <path>` (per-repo). See [Quick Start](#quick-start) step 3.
 - **Permission errors on serial port?** On Linux, add your user to the `dialout` group. On macOS, check `/dev/tty.*` permissions.
-- **Multiple sessions?** Concurrent Copilot CLI sessions on the same machine are fully supported. The firmware tracks each session independently and displays the highest-priority state across all active sessions. When one session ends, the ring seamlessly continues showing the remaining sessions' state. A file lock prevents serial corruption.
+- **Multiple sessions?** Concurrent Copilot CLI sessions on the same machine are fully supported. The firmware tracks each session independently and displays the highest-priority state across all active sessions. When one session ends, the ring seamlessly continues showing the remaining sessions' state. If all sessions go idle for 5 minutes, the ring transitions to a dim breathing animation; after 1 hour of no activity it goes fully dark. A file lock prevents serial corruption.
 
 See also: [`docs/setup-windows.md`](docs/setup-windows.md) · [`docs/setup-macos.md`](docs/setup-macos.md) · [`docs/setup-linux.md`](docs/setup-linux.md)
 
