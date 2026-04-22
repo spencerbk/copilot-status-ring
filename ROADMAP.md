@@ -70,6 +70,7 @@ Areas where the current implementation is intentionally pragmatic and may warran
 | Automated firmware regression tests | CircuitPython firmware logic (state machine, session tracker, stale-idle behavior) has no test harness in this repo. Changes are validated by static analysis (Ruff + Pyright) and manual hardware testing only. A host-side simulator or split-out pure-Python tracker module could enable pytest coverage without a real MCU. |
 | Firmware-hang surfacing | If the MCU locks up between serial writes, the host currently has no way to notice or alert. The onboard watchdog reboots the MCU, but the host is blind to the event. |
 | USB disconnect/reconnect UX | When the ring is physically unplugged mid-session, the host logs a serial error and the hook exits silently. There is no visible indicator on the host side that the ring has gone offline, and no automatic state resync when it returns. |
+| VS Code-compatible hook aliases | The host bridge currently targets Copilot CLI hook names and camelCase payloads. If VS Code agent-hook compatibility is added later, extend normalization to accept the alternate event aliases and payload shapes, then update tests and hook documentation together so CLI support remains the primary baseline. |
 
 ---
 
