@@ -77,7 +77,7 @@ CircuitPython boards typically create **two** serial devices — one for the REP
 
 ## 4. Configure the serial port
 
-The host bridge auto-detects your board by scanning for USB serial devices matching known descriptions. On boards with dual CDC channels (like CircuitPython boards), it automatically selects the correct data channel. **Most users need no port configuration.**
+The host bridge auto-detects your board by scanning USB serial devices matching known descriptions. Unlike Windows, macOS serial listings usually do not expose USB interface numbers, so if multiple ports match you may still need to set the port manually.
 
 If auto-detection doesn't find your board, you can set the port manually:
 
@@ -131,6 +131,30 @@ macOS may require granting your terminal app permission to access USB devices:
 7. The board reboots automatically.
 
 > **Note:** After copying `boot.py`, unplug and replug the board so the USB CDC data channel activates and the device appears as "Copilot Command Ring". The device path may change.
+
+---
+
+## 6b. Flash MicroPython firmware (alternative)
+
+Use MicroPython instead of CircuitPython if you prefer the MicroPython ecosystem.
+
+1. Download MicroPython 1.24+ for your board from [micropython.org/download](https://micropython.org/download/).
+2. Put your board into bootloader mode (double-tap reset on RP2040 boards).
+3. Drag the `.uf2` file onto the boot drive that appears.
+4. The board reboots. Install the USB CDC library:
+   ```bash
+   mpremote mip install usb-device-cdc
+   ```
+5. Copy the firmware files:
+   ```bash
+   mpremote cp firmware/micropython/boot.py :boot.py
+   mpremote cp firmware/micropython/ring_cdc.py :ring_cdc.py
+   mpremote cp firmware/micropython/neopixel_compat.py :neopixel_compat.py
+   mpremote cp firmware/micropython/main.py :main.py
+   ```
+6. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), edit `main.py` and set `NEOPIXEL_PIN` to the correct GPIO number before resetting. Then reset the board.
+
+> **Note:** After the first boot with `boot.py`, unplug and replug the board so the second CDC channel appears. The device path may change. See [`firmware/micropython/README.md`](../firmware/micropython/README.md) for details.
 
 ---
 

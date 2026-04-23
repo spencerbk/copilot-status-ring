@@ -105,6 +105,7 @@ CONFIG_FILE_NAME: Final[str] = ".copilot-command-ring.local.json"
 DEFAULT_DESCRIPTION_CONTAINS: Final[list[str]] = [
     "Copilot Command Ring",
     "CircuitPython",
+    "MicroPython",
     "Arduino",
     "USB Serial",
     "Seeed",

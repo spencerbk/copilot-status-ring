@@ -4,6 +4,6 @@
   "brightness": 0.04,
   "idle_mode": "breathing",
   "device_match": {
-    "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial", "Seeed"]
+    "description_contains": ["Copilot Command Ring", "CircuitPython", "MicroPython", "Arduino", "USB Serial", "Seeed"]
   }
 }
