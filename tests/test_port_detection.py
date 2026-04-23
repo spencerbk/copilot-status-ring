@@ -24,12 +24,14 @@ def _fake_port(
 
 
 def test_explicit_port_returned_directly():
+    """Return the configured serial port without scanning."""
     cfg = Config(serial_port="COM3")
     result = detect_serial_port(cfg)
     assert result == "COM3"
 
 
 def test_explicit_port_skips_auto_detect():
+    """Skip port enumeration when an explicit port is configured."""
     cfg = Config(serial_port="/dev/ttyUSB0")
     with patch("serial.tools.list_ports.comports") as mock_comports:
         mock_comports.side_effect = AssertionError("should not be called")
@@ -42,6 +44,7 @@ def test_explicit_port_skips_auto_detect():
 
 
 def test_auto_detect_matches_by_description():
+    """Match a port when its description contains the configured text."""
     ports = [
         _fake_port("/dev/ttyACM0", "CircuitPython CDC control"),
         _fake_port("/dev/ttyS0", "Standard Serial Port"),
@@ -53,6 +56,7 @@ def test_auto_detect_matches_by_description():
 
 
 def test_auto_detect_case_insensitive():
+    """Match descriptions without regard to letter case."""
     ports = [_fake_port("COM4", "CIRCUITPYTHON USB DEVICE")]
     cfg = Config(serial_port=None, device_match_descriptions=["circuitpython"])
     with patch("serial.tools.list_ports.comports", return_value=ports):
@@ -61,6 +65,7 @@ def test_auto_detect_case_insensitive():
 
 
 def test_auto_detect_matches_arduino():
+    """Match an Arduino port description."""
     ports = [_fake_port("COM6", "Arduino Mega 2560")]
     cfg = Config(serial_port=None, device_match_descriptions=["Arduino"])
     with patch("serial.tools.list_ports.comports", return_value=ports):
@@ -69,6 +74,7 @@ def test_auto_detect_matches_arduino():
 
 
 def test_auto_detect_returns_first_match():
+    """Return the first matching port when multiple descriptions match."""
     ports = [
         _fake_port("COM1", "Standard Serial"),
         _fake_port("COM2", "Arduino Uno"),
@@ -88,6 +94,7 @@ def test_auto_detect_returns_first_match():
 
 
 def test_no_match_returns_none():
+    """Return None when no port description matches."""
     ports = [
         _fake_port("COM1", "Bluetooth Serial"),
         _fake_port("COM2", "Intel UART"),
@@ -99,6 +106,7 @@ def test_no_match_returns_none():
 
 
 def test_empty_ports_list_returns_none():
+    """Return None when there are no ports to scan."""
     cfg = Config(serial_port=None, device_match_descriptions=["CircuitPython"])
     with patch("serial.tools.list_ports.comports", return_value=[]):
         result = detect_serial_port(cfg)
@@ -109,6 +117,7 @@ def test_empty_ports_list_returns_none():
 
 
 def test_comports_exception_returns_none():
+    """Return None when serial port enumeration raises an exception."""
     cfg = Config(serial_port=None)
     with patch("serial.tools.list_ports.comports", side_effect=OSError("USB error")):
         result = detect_serial_port(cfg)
@@ -161,3 +170,21 @@ def test_single_port_without_location_still_works():
     with patch("serial.tools.list_ports.comports", return_value=ports):
         result = detect_serial_port(cfg)
     assert result == "COM5"
+
+
+def test_auto_detect_matches_micropython_description():
+    """Match a MicroPython device using the default description list."""
+    ports = [_fake_port("COM7", "MicroPython CDC")]
+    cfg = Config(serial_port=None)
+    with patch("serial.tools.list_ports.comports", return_value=ports):
+        result = detect_serial_port(cfg)
+    assert result == "COM7"
+
+
+def test_auto_detect_micropython_single_port():
+    """Select a single exposed MicroPython CDC port."""
+    ports = [_fake_port("COM8", "MicroPython CDC")]
+    cfg = Config(serial_port=None, device_match_descriptions=["MicroPython"])
+    with patch("serial.tools.list_ports.comports", return_value=ports):
+        result = detect_serial_port(cfg)
+    assert result == "COM8"

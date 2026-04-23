@@ -68,6 +68,7 @@ copilot-command-ring --help
 4. Look for your board — it will appear as something like:
    - `USB Serial Device (COM7)`
    - `CircuitPython CDC data (COM8)`
+   - `MicroPython CDC (COM9)`
    - `Arduino Uno (COM3)`
 5. Note the **COM port number** (e.g. `COM7`).
 
@@ -77,7 +78,7 @@ copilot-command-ring --help
 
 ## 4. Configure the serial port
 
-The host bridge auto-detects your board by scanning for USB serial devices matching known descriptions. On boards with dual CDC channels (like CircuitPython boards), it automatically selects the correct data channel. **Most users need no port configuration.**
+The host bridge auto-detects your board by scanning USB serial devices matching known descriptions. On Windows, boards with dual CDC channels (like CircuitPython boards) usually select the higher-numbered data channel automatically. **Most Windows users need no port configuration.**
 
 If auto-detection doesn't find your board, you can set the port manually:
 
@@ -119,6 +120,30 @@ Create `.copilot-command-ring.local.json` in your project root and add a `serial
 6. The board reboots automatically. The ring should show a purple wipe animation on startup, confirming the firmware is running.
 
 > **Note:** After copying `boot.py`, you must **unplug and replug** the board so the USB CDC data channel activates and the device appears as "Copilot Command Ring" in Device Manager. The COM port number may change.
+
+---
+
+## 5b. Flash MicroPython firmware (alternative)
+
+Use MicroPython instead of CircuitPython if you prefer the MicroPython ecosystem.
+
+1. Download MicroPython 1.24+ for your board from [micropython.org/download](https://micropython.org/download/).
+2. Put your board into bootloader mode (double-tap reset on RP2040 boards).
+3. Drag the `.uf2` file onto the boot drive that appears (e.g. `RPI-RP2`).
+4. The board reboots. Install the USB CDC library:
+   ```powershell
+   mpremote mip install usb-device-cdc
+   ```
+5. Copy the firmware files:
+   ```powershell
+   mpremote cp firmware/micropython/boot.py :boot.py
+   mpremote cp firmware/micropython/ring_cdc.py :ring_cdc.py
+   mpremote cp firmware/micropython/neopixel_compat.py :neopixel_compat.py
+   mpremote cp firmware/micropython/main.py :main.py
+   ```
+6. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), edit `main.py` and set `NEOPIXEL_PIN` to the correct GPIO number before resetting. Then reset the board. The ring should show a purple wipe animation on startup.
+
+> **Note:** After the first boot with `boot.py`, the board creates a second CDC channel. Unplug and replug the board — the COM port number may change. See [`firmware/micropython/README.md`](../firmware/micropython/README.md) for board-specific details.
 
 ---
 

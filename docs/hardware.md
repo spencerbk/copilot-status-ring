@@ -9,7 +9,7 @@ This guide covers wiring, parts, and power for the Copilot Command Ring.
 | Part | Description | Notes |
 |------|-------------|-------|
 | **Adafruit NeoPixel Ring 24** | 24 × WS2812B RGB LEDs ([product 1586](https://www.adafruit.com/product/1586)) | The ring this project is designed for |
-| **USB microcontroller** | RP2040, ESP32-S2/S3, or similar | Must support CircuitPython and/or Arduino |
+| **USB microcontroller** | RP2040, ESP32-S2/S3, or similar | Must support CircuitPython, MicroPython, and/or Arduino |
 | **330 Ω resistor** (300–500 Ω) *(optional)* | In series with the NeoPixel data line | Recommended for permanent builds; safe to skip for short-wire prototyping |
 | **1000 µF capacitor** (500–1000 µF) | Across 5V and GND near the ring | Protects LEDs against power-on inrush current |
 | **74AHCT125 level shifter** *(optional)* | Shifts 3.3V data to 5V logic | Recommended for reliable signaling; see [Level shifting](#level-shifting) |
@@ -48,35 +48,37 @@ Computer ════════════ MCU
 
 ## Recommended boards
 
-Any board that supports CircuitPython and/or Arduino with native USB will work. Good choices:
+Any board that supports CircuitPython, MicroPython, and/or Arduino with native USB will work. Good choices:
 
 | Board | Runtime | Notes |
 |-------|---------|-------|
-| **Raspberry Pi Pico / Pico W** | CircuitPython + Arduino | RP2040-based, widely available, cheap |
-| **Adafruit Feather RP2040** | CircuitPython + Arduino | Built-in LiPo charging, Feather ecosystem |
-| **Adafruit QT Py RP2040** | CircuitPython + Arduino | Tiny form factor, STEMMA QT connector |
-| **Adafruit Feather ESP32-S2** | CircuitPython + Arduino | Wi-Fi capable (not needed for v1, but nice to have) |
-| **Adafruit Feather ESP32-S3** | CircuitPython + Arduino | Wi-Fi + BLE, native USB |
-| **Adafruit QT Py ESP32-S2** | CircuitPython + Arduino | Tiny form factor, STEMMA QT; **use `A0` for data pin** |
-| **Adafruit QT Py ESP32-S3** | CircuitPython + Arduino | Tiny form factor, Wi-Fi + BLE; **use `A0` for data pin** |
-| **Seeed Studio XIAO RP2350** | CircuitPython | RP2350 dual-core, ultra-compact; default `D6` pin works |
-| **Seeed Studio XIAO ESP32-C6** | CircuitPython + Arduino | Wi-Fi 6 + BLE 5, ultra-compact; default `D6` pin works |
+| **Raspberry Pi Pico / Pico W** | CircuitPython + MicroPython + Arduino | RP2040-based, widely available, cheap |
+| **Adafruit Feather RP2040** | CircuitPython + MicroPython + Arduino | Built-in LiPo charging, Feather ecosystem |
+| **Adafruit QT Py RP2040** | CircuitPython + MicroPython + Arduino | Tiny form factor, STEMMA QT connector; MicroPython requires a manual `NEOPIXEL_PIN` override |
+| **Adafruit Feather ESP32-S2** | CircuitPython + MicroPython + Arduino | Wi-Fi capable (not needed for v1, but nice to have); MicroPython requires a manual `NEOPIXEL_PIN` override |
+| **Adafruit Feather ESP32-S3** | CircuitPython + MicroPython + Arduino | Wi-Fi + BLE, native USB; MicroPython requires a manual `NEOPIXEL_PIN` override |
+| **Adafruit QT Py ESP32-S2** | CircuitPython + MicroPython + Arduino | Tiny form factor, STEMMA QT; MicroPython requires a manual `NEOPIXEL_PIN` override |
+| **Adafruit QT Py ESP32-S3** | CircuitPython + MicroPython + Arduino | Tiny form factor, Wi-Fi + BLE; MicroPython requires a manual `NEOPIXEL_PIN` override |
+| **Seeed Studio XIAO RP2350** | CircuitPython + MicroPython | RP2350 dual-core, ultra-compact; default `D6` pin works |
+| **Seeed Studio XIAO ESP32-C6** | CircuitPython + MicroPython + Arduino | Wi-Fi 6 + BLE 5, ultra-compact; MicroPython runs in degraded mode and requires a manual `NEOPIXEL_PIN` override |
 
-The firmware does **not** hard-code a specific board. The CircuitPython firmware auto-detects the correct NeoPixel data pin at startup. Pin count is configurable.
+The firmware does **not** hard-code a specific board. CircuitPython auto-detects the correct NeoPixel data pin at startup. MicroPython auto-detects RP2040/RP2350-family boards that wire the ring to GPIO 6; other boards require a manual `NEOPIXEL_PIN` override. Pin count is configurable.
 
 ### Pin configuration by board
 
-The CircuitPython firmware auto-detects the NeoPixel data pin using `board.board_id`. For Arduino, edit `NEOPIXEL_PIN` in the `.ino` sketch.
+The CircuitPython firmware auto-detects the NeoPixel data pin using `board.board_id`. The MicroPython firmware auto-detects only RP2040/RP2350-family boards that use GPIO 6 by default; other boards require a manual `NEOPIXEL_PIN` override. For Arduino, edit `NEOPIXEL_PIN` in the `.ino` sketch.
 
-| Board | CircuitPython pin (auto-detected) | Arduino pin | Notes |
-|-------|----------------------------------|-------------|-------|
-| Raspberry Pi Pico | `board.GP6` | `6` | Auto-detected |
-| Adafruit Feather RP2040 | `board.D6` | `6` | Auto-detected |
-| Adafruit QT Py RP2040 | `board.A0` | `A0` | Auto-detected; no D6 on QT Py boards |
-| Adafruit QT Py ESP32-S2 | `board.A0` | `A0` | Auto-detected; no D6 |
-| Adafruit QT Py ESP32-S3 | `board.A0` | `A0` | Auto-detected; no D6 |
-| Seeed Studio XIAO RP2350 | `board.D6` | — | Auto-detected; Arduino not yet supported |
-| Seeed Studio XIAO ESP32-C6 | `board.D6` | `6` | Auto-detected |
+| Board | CircuitPython pin (auto-detected) | MicroPython pin | Arduino pin | Notes |
+|-------|----------------------------------|-----------------|-------------|-------|
+| Raspberry Pi Pico | `board.GP6` | `Pin(6)` | `6` | Auto-detected |
+| Adafruit Feather RP2040 | `board.D6` | `Pin(6)` | `6` | Auto-detected |
+| Adafruit QT Py RP2040 | `board.A0` | Set manually | `A0` | MicroPython requires a manual override; use the GPIO number for the pin you wired |
+| Adafruit Feather ESP32-S2 | `board.D6` | Set manually | `6` | MicroPython requires a manual override |
+| Adafruit Feather ESP32-S3 | `board.D6` | Set manually | `6` | MicroPython requires a manual override |
+| Adafruit QT Py ESP32-S2 | `board.A0` | Set manually | `A0` | MicroPython requires a manual override |
+| Adafruit QT Py ESP32-S3 | `board.A0` | Set manually | `A0` | MicroPython requires a manual override |
+| Seeed Studio XIAO RP2350 | `board.D6` | `Pin(6)` | — | Auto-detected; Arduino not yet supported |
+| Seeed Studio XIAO ESP32-C6 | `board.D6` | Set manually | `6` | MicroPython requires a manual override and runs in degraded mode |
 
 To override CircuitPython auto-detection, edit `NEOPIXEL_PIN` at the top of `code.py`:
 ```python
@@ -86,6 +88,11 @@ NEOPIXEL_PIN = board.A0  # override auto-detection
 For Arduino, edit `NEOPIXEL_PIN` in the `.ino` sketch:
 ```cpp
 #define NEOPIXEL_PIN A0  // QT Py boards
+```
+
+For MicroPython, edit `NEOPIXEL_PIN` at the top of `main.py`:
+```python
+NEOPIXEL_PIN = 18  # example: use the GPIO number for your board's data pin
 ```
 
 ---

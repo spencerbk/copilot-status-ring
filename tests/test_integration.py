@@ -87,6 +87,10 @@ class TestHookMainIntegration:
                 "notification",
                 {"notification_type": "info", "message": "Agent completed background task"},
             ),
+            (
+                "notification",
+                {"notification_type": "elicitation_dialog", "message": "Choose an option"},
+            ),
         ]
         for event_name, payload in events:
             result = _run_hook(event_name, payload)
@@ -162,6 +166,19 @@ class TestHookMainIntegration:
         assert result.returncode == 0
         assert result.stdout == ""
         assert '"state": "notify"' in result.stderr or '"state":"notify"' in result.stderr
+
+    def test_elicitation_dialog_dry_run_logs_awaiting_elicitation(self) -> None:
+        """Elicitation dialog notifications produce a persistent state."""
+        result = _run_hook(
+            "notification",
+            {"notification_type": "elicitation_dialog", "message": "Choose"},
+        )
+        assert result.returncode == 0
+        assert result.stdout == ""
+        assert (
+            '"state": "awaiting_elicitation"' in result.stderr
+            or '"state":"awaiting_elicitation"' in result.stderr
+        )
 
     def test_session_field_in_dry_run_output(self) -> None:
         """When COPILOT_RING_CLI_PID is set, the session field appears in output."""

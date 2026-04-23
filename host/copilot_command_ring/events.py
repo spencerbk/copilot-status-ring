@@ -6,7 +6,14 @@ from __future__ import annotations
 
 import os
 
-from .constants import ENV_CLI_PID, EVENT_STATE_MAP, STATE_IDLE, STATE_TTL_DEFAULTS
+from .constants import (
+    ELICITATION_NOTIFICATION_TYPE,
+    ENV_CLI_PID,
+    EVENT_STATE_MAP,
+    STATE_AWAITING_ELICITATION,
+    STATE_IDLE,
+    STATE_TTL_DEFAULTS,
+)
 
 
 def _set_if(out: dict[str, object], key: str, value: object) -> None:
@@ -69,6 +76,10 @@ def normalize_event(
     elif event_name == "notification":
         _set_if(out, "notification_type", payload.get("notification_type"))
         _set_if(out, "message", payload.get("message"))
+        # Elicitation dialogs promote to a persistent state — the agent is
+        # blocked waiting for user input and the ring should stay lit.
+        if payload.get("notification_type") == ELICITATION_NOTIFICATION_TYPE:
+            out["state"] = STATE_AWAITING_ELICITATION
 
     # Session ID for multi-session firmware arbitration
     _set_if(out, "session", os.environ.get(ENV_CLI_PID))

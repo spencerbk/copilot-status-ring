@@ -6,9 +6,103 @@ Copilot Command Ring turns an [Adafruit NeoPixel Ring (24 RGB LEDs)](https://www
 
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![CircuitPython](https://img.shields.io/badge/firmware-CircuitPython-blueviolet)
+![MicroPython](https://img.shields.io/badge/firmware-MicroPython-2b2b2b)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-## Architecture
+## Quick Start
+
+### What you'll need
+
+- **GitHub Copilot CLI** — Install by following the [Installing GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) guide. Verify it's working by running `copilot` in your terminal.
+- **Python 3.9+** — Required for the host bridge. See the platform setup guides ([Windows](docs/setup-windows.md) · [macOS](docs/setup-macos.md) · [Linux](docs/setup-linux.md)) for OS-specific instructions.
+- **A USB microcontroller + NeoPixel Ring** — See [Hardware](#hardware) below for the parts list, or [`docs/hardware.md`](docs/hardware.md) for wiring diagrams.
+
+### 1. Install the host bridge
+
+> **Recommended:** Use a virtual environment to isolate dependencies.
+>
+> **macOS / Linux:** `python3 -m venv .venv && source .venv/bin/activate`
+> **Windows:** `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`
+>
+> Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
+
+```
+pip install git+https://github.com/spencerbk/copilot-status-ring.git
+```
+
+Or from a local clone:
+
+```
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+pip install .
+```
+
+### 2. Flash firmware
+
+#### Choosing a firmware
+
+| Feature | CircuitPython | MicroPython | Arduino |
+|---------|:---:|:---:|:---:|
+| Multi-session support | ✅ | ✅ | ❌ (last-writer-wins) |
+| NeoPixel pin auto-detect | ✅ All supported boards | ⚠️ RP2040/RP2350 only | ❌ Manual `#define` |
+| Idle breathing mode | ✅ | ✅ | ❌ |
+| Per-state TTL decay | ✅ | ✅ | ❌ |
+| Ease of flashing | Drag-and-drop `.uf2` + file copy | `.uf2` + `mpremote` commands | Arduino IDE upload |
+| **Recommended for** | Most users | MicroPython ecosystem fans | Minimal-dependency setups |
+
+> **Recommendation:** Use **CircuitPython** unless you have a specific reason to prefer another runtime. It has the broadest board auto-detection and the simplest setup.
+
+**CircuitPython (recommended):**
+
+1. Install [CircuitPython](https://circuitpython.org/downloads) on your board.
+2. Copy `firmware/circuitpython/boot.py` and `firmware/circuitpython/code.py` to the `CIRCUITPY` drive.
+3. Install the `neopixel` library from the [Adafruit CircuitPython Bundle](https://circuitpython.org/libraries) into `CIRCUITPY/lib/`.
+
+See [`firmware/circuitpython/README.md`](firmware/circuitpython/README.md) for pin auto-detection details and board-specific notes.
+
+**MicroPython:**
+
+1. Flash [MicroPython 1.24+](https://micropython.org/download/) onto your board.
+2. Install the USB CDC library: `mpremote mip install usb-device-cdc`
+3. Copy `firmware/micropython/boot.py`, `ring_cdc.py`, `main.py`, and `neopixel_compat.py` to the board using `mpremote`.
+4. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), set `NEOPIXEL_PIN` in `main.py` before resetting.
+
+See [`firmware/micropython/README.md`](firmware/micropython/README.md) for board support matrix and pin configuration.
+
+**Arduino:**
+
+1. Open `firmware/arduino/copilot_command_ring/copilot_command_ring.ino` in the Arduino IDE.
+2. Install the **Adafruit NeoPixel** library via Library Manager.
+3. Upload to your board.
+
+See [`firmware/arduino/README.md`](firmware/arduino/README.md) for board-specific pin notes. Arduino firmware is single-session only — see the [comparison table](#choosing-a-firmware) above.
+
+### 3. Activate the ring
+
+You can activate the ring **globally** (works in every repo) or **per-repo**. Global setup is recommended.
+
+**One-time global setup (recommended):**
+
+```
+copilot-command-ring setup
+```
+
+This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. The hooks record the current Python path, so they work even when the venv isn't active.
+
+**Or per-repo deploy (alternative):**
+
+```
+copilot-command-ring deploy <path-to-repo>
+```
+
+This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. Repeat for each repo where you want the ring active.
+
+> **Note:** If you recreate the virtual environment or install on a new machine, re-run `setup --force` or `deploy <path> --force` to update the recorded Python path.
+>
+> **Tip:** The hooks auto-detect your board by USB serial description. If auto-detect picks the wrong port or finds nothing, set `COPILOT_RING_PORT` explicitly.
+
+## How It Works
 
 ```
 Copilot CLI
@@ -22,8 +116,9 @@ run-hook.ps1 / run-hook.sh
     │
     ▼
 Python host bridge  ──USB serial──▶  MCU firmware  ──▶  NeoPixel Ring (24 LEDs)
-(copilot_command_ring)                (CircuitPython       (Adafruit product 1586)
-                                      or Arduino)
+(copilot_command_ring)                (CircuitPython,      (Adafruit product 1586)
+                                       MicroPython,
+                                       or Arduino)
 ```
 
 Hook events flow from the Copilot CLI through wrapper scripts into a Python host bridge, which sends compact JSON-line messages over USB serial to the microcontroller. The MCU owns the animation loop — the host sends state transitions, not frames.
@@ -45,102 +140,7 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 | Layer | Primary | Also supported |
 |-------|---------|----------------|
 | **Host OS** | Windows | macOS, Linux |
-| **Firmware** | CircuitPython | Arduino |
-
-## Prerequisites
-
-- **GitHub Copilot CLI** — This project is a hardware companion for the Copilot CLI agent. Install it by following the [Installing GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) guide. Verify it's working by running `copilot` in your terminal.
-- **Python 3.9+** — Required for the host bridge. See the platform setup guides below for installation instructions.
-
-## Quick Start
-
-### 1. Install the host bridge
-
-> **Recommended:** Use a virtual environment to isolate dependencies.
->
-> **macOS / Linux:** `python3 -m venv .venv && source .venv/bin/activate`
->
-> **Windows (PowerShell):** `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`
->
-> Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
->
-> The hook install commands in step 3 record the Python path so hooks work even outside the venv.
-
-**macOS / Linux:**
-
-```bash
-pip install git+https://github.com/spencerbk/copilot-status-ring.git
-```
-
-  Or from a local clone:
-
-  ```bash
-  git clone https://github.com/spencerbk/copilot-status-ring.git
-  cd copilot-status-ring
-  pip install .
-  ```
-
-**Windows (PowerShell):**
-
-```powershell
-pip install git+https://github.com/spencerbk/copilot-status-ring.git
-```
-
-  Or from a local clone:
-
-  ```powershell
-  git clone https://github.com/spencerbk/copilot-status-ring.git
-  cd copilot-status-ring
-  pip install .
-  ```
-
-### 2. Flash firmware
-
-**CircuitPython (recommended):**
-
-1. Install [CircuitPython](https://circuitpython.org/downloads) on your board.
-2. Copy `firmware/circuitpython/boot.py` and `firmware/circuitpython/code.py` to the `CIRCUITPY` drive.
-3. Install the `neopixel` library from the [Adafruit CircuitPython Bundle](https://circuitpython.org/libraries) into `CIRCUITPY/lib/`.
-
-**Arduino:**
-
-1. Open `firmware/arduino/copilot_command_ring/copilot_command_ring.ino` in the Arduino IDE.
-2. Install the **Adafruit NeoPixel** library via Library Manager.
-3. Upload to your board.
-
-### 3. Activate the ring
-
-**One-time global setup (recommended):**
-
-```bash
-copilot-command-ring setup
-```
-
-This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. The hooks record the current Python path, so they work even when the venv isn't active.
-
-> **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring setup --force` to update the recorded Python path.
-
-**Or per-repo deploy (alternative):**
-
-Run from any directory — this writes hook files into your target repo:
-
-**macOS / Linux:**
-
-```bash
-copilot-command-ring deploy ~/code/my-project
-```
-
-**Windows (PowerShell):**
-
-```powershell
-copilot-command-ring deploy C:\code\my-project
-```
-
-This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. The deployed hooks record the current Python path. Repeat for each repo where you want the ring active.
-
-> **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring deploy <path> --force` in that repo to update the recorded Python path.
-
-> **Tip:** The deployed hooks auto-detect your board — no port configuration needed. The ring idles in a dim breathing state by default, then switches to active states as soon as a Copilot CLI session starts.
+| **Firmware** | CircuitPython | MicroPython, Arduino |
 
 ## Configuration
 
@@ -168,7 +168,7 @@ Create `.copilot-command-ring.local.json` in the repo root (git-ignored):
   "lock_timeout": 1.0,
   "idle_mode": "breathing",
   "device_match": {
-    "description_contains": ["Copilot Command Ring", "CircuitPython", "Arduino", "USB Serial", "Seeed"]
+    "description_contains": ["Copilot Command Ring", "CircuitPython", "MicroPython", "Arduino", "USB Serial", "Seeed"]
   }
 }
 ```
@@ -202,9 +202,10 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 | `preCompact` | `compacting` | wipe | cyan |
 | `errorOccurred` | `error` | flash | red |
 | `notification` | `notify` | flash (suppressed while busy) | white |
+| `notification` (`elicitation_dialog`) | `awaiting_elicitation` | pulse | yellow |
 | `sessionEnd` | `off` → `agent_idle` (breathing) | off / breathing | — |
 
-When a `notification` arrives while the ring is already showing `working`, `subagent_active`, or `compacting`, the firmware keeps the busy animation instead of interrupting it with a white flash.
+When a `notification` arrives while the ring is already showing `working`, `subagent_active`, or `compacting`, the firmware keeps the busy animation instead of interrupting it with a white flash. When the notification carries `notification_type: "elicitation_dialog"`, the ring shows a persistent yellow pulse instead — signaling that the agent is blocked waiting for user input. While that elicitation pulse is active, lower-priority transient flashes are suppressed so the ring stays yellow until the user responds; only a red `error` flash can interrupt it.
 
 The serial protocol uses JSON Lines — one JSON object per line over USB serial. See [`docs/hook-events.md`](docs/hook-events.md) for the full protocol specification.
 
@@ -226,6 +227,7 @@ copilot-status-ring/
 │  └─ simulate.py                    #   Simulation mode
 ├─ firmware/circuitpython/           # CircuitPython firmware (boot.py, code.py)
 ├─ firmware/arduino/                 # Arduino firmware (.ino sketch)
+├─ firmware/micropython/             # MicroPython firmware (boot.py, main.py, compat layer)
 ├─ docs/                             # Setup guides, hardware docs, troubleshooting
 ├─ tests/                            # pytest unit + integration tests
 ├─ scripts/                          # Simulation and utility scripts
@@ -237,80 +239,40 @@ copilot-status-ring/
 
 ### Install dev dependencies
 
-**macOS / Linux:**
-
-```bash
+```
 git clone https://github.com/spencerbk/copilot-status-ring.git
 cd copilot-status-ring
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
 ```
 
-**Windows (PowerShell):**
+Create a venv (macOS / Linux: `python3 -m venv .venv && source .venv/bin/activate` · Windows: `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`), then:
 
-```powershell
-git clone https://github.com/spencerbk/copilot-status-ring.git
-cd copilot-status-ring
-py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1
+```
 pip install -e ".[dev]"
 ```
 
 ### Run tests
 
-**macOS / Linux:**
-
-```bash
-python3 -m pytest tests/ -v
 ```
-
-**Windows (PowerShell):**
-
-```powershell
 python -m pytest tests/ -v
 ```
 
 ### Lint
 
-**macOS / Linux:**
-
-```bash
-python3 -m ruff check host/ tests/
 ```
-
-**Windows (PowerShell):**
-
-```powershell
 python -m ruff check host/ tests/
 ```
 
 ### Simulate hook events (no hardware needed)
 
-**macOS / Linux:**
-
-```bash
-python3 -m copilot_command_ring.simulate --dry-run
 ```
-
-**Windows (PowerShell):**
-
-```powershell
 python -m copilot_command_ring.simulate --dry-run
 ```
 
 ### Validate platform setup
 
-Run the platform validation script to check that your environment is correctly configured:
-
-**macOS / Linux:**
-
 ```bash
-bash scripts/validate-platform.sh
-```
-
-**Windows (PowerShell):**
-
-```powershell
-.\scripts\validate-platform.ps1
+bash scripts/validate-platform.sh          # macOS / Linux
+.\scripts\validate-platform.ps1            # Windows
 ```
 
 ## Troubleshooting
@@ -320,9 +282,9 @@ Common issues and solutions are documented in [`docs/troubleshooting.md`](docs/t
 Quick checks:
 
 - **Ring not responding?** Verify the serial port with `COPILOT_RING_LOG_LEVEL=DEBUG` and check the connection.
-- **No hooks firing?** Run `copilot-command-ring setup` (global, recommended) or `copilot-command-ring deploy <path>` (per-repo). See [Quick Start](#quick-start) step 3.
-- **Permission errors on serial port?** On Linux, add your user to the `dialout` group. On macOS, check `/dev/tty.*` permissions.
-- **Multiple sessions?** Concurrent Copilot CLI sessions on the same machine are fully supported. The firmware tracks each session independently and displays the highest-priority state across all active sessions. When one session ends, the ring seamlessly continues showing the remaining sessions' state. If all sessions go idle (no hook events for 5 minutes) or end explicitly via `sessionEnd`, the ring transitions to a dim breathing animation and stays there until a new event arrives — it will not go dark on its own. Persistent states (e.g. `working`, `awaiting_permission`) carry a TTL so a crashed or killed session decays to breathing on-device without waiting for the full stale-prune window. Set `idle_mode` to `"off"` in the config file if you prefer the ring to go fully dark when the last session ends. A file lock prevents serial corruption.
+- **No hooks firing?** Run `copilot-command-ring setup` (global) or `copilot-command-ring deploy <path>` (per-repo). See [Quick Start](#quick-start) step 3.
+- **Permission errors?** Linux: add your user to the `dialout` group. macOS: check `/dev/tty.*` permissions.
+- **Multiple sessions?** Fully supported (CircuitPython/MicroPython firmware). The ring shows the highest-priority state across all active sessions. Stale sessions are pruned after 5 minutes. Arduino firmware is single-session only.
 
 See also: [`docs/setup-windows.md`](docs/setup-windows.md) · [`docs/setup-macos.md`](docs/setup-macos.md) · [`docs/setup-linux.md`](docs/setup-linux.md)
 

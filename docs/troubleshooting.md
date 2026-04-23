@@ -159,6 +159,7 @@ The firmware may not be running or the wiring may be wrong.
 - Is the `CIRCUITPY` drive visible? If so, CircuitPython is running.
 - Open a serial console (e.g. PuTTY, `screen`, or Mu Editor) to the **console** port and check for errors.
 - Press Ctrl+C in the serial console to get a REPL prompt — if you get `>>>`, CircuitPython is running.
+- **MicroPython boards:** Connect with `mpremote` and press Ctrl+C to get a `>>>` REPL prompt. If you get a prompt, MicroPython is running. Check for import errors by running `import main` manually.
 
 **Check wiring:**
 
@@ -215,6 +216,37 @@ Recent firmware versions include several safeguards for long-running sessions:
 
 ---
 
+## MicroPython-specific issues
+
+**CDC data channel not appearing:**
+
+On MicroPython boards, the second CDC channel (used for ring communication) requires `micropython-lib`'s `usb-device-cdc` package. If the channel doesn't appear:
+
+1. Verify MicroPython 1.24+ is installed: connect with `mpremote` and check the REPL banner version.
+2. Install the package: `mpremote mip install usb-device-cdc`
+3. Verify `boot.py` is on the board: `mpremote ls`
+4. Unplug and replug the board — the CDC channel registers during `boot.py` execution, before `main.py` runs.
+
+**Startup error: `Cannot detect NeoPixel pin`:**
+
+The MicroPython firmware only auto-detects RP2040/RP2350-family boards that wire the ring to GPIO 6 by default. On QT Py RP2040 and ESP32 variants, edit `NEOPIXEL_PIN` at the top of `main.py` and set it to the GPIO number for the pin you wired before resetting.
+
+**ESP32-C3/C6 degraded mode:**
+
+ESP32-C3 and ESP32-C6 boards lack native USB device hardware and cannot create a custom CDC endpoint. The MicroPython firmware falls back to reading from `sys.stdin`, which shares the REPL channel. This means:
+
+- The ring works, but REPL echoes may inject garbage into the serial stream.
+- The firmware's JSON parser discards malformed lines, so brief visual glitches are the worst case.
+- Avoid interacting with the REPL (Ctrl+C, typing commands) while the ring is running.
+
+**`mpremote` can't connect:**
+
+- Ensure no other program (serial monitor, PuTTY) has the port open.
+- On Linux, verify you're in the `dialout` group.
+- Try `mpremote connect auto` or specify the port explicitly: `mpremote connect /dev/ttyACM0`.
+
+---
+
 ## Ring appears offline / hook silently doing nothing
 
 Copilot hooks are fire-and-forget — individual send failures are logged at `DEBUG` level and suppressed by default so they never block the CLI. If the ring seems offline, you may see no output at all at the default log level.
@@ -239,7 +271,7 @@ The firmware is configured for 24 pixels (NeoPixel Ring product 1586). If you're
 
 **Check data pin:**
 
-Make sure the data pin in the firmware matches the pin you've wired. The CircuitPython firmware auto-detects the correct pin for supported boards (e.g. `board.GP6` on Pico, `board.D6` on Feather/XIAO, `board.A0` on QT Py). If auto-detection picks the wrong pin, override it by setting `NEOPIXEL_PIN` at the top of `code.py`. See [`docs/hardware.md`](hardware.md) for the full pin table.
+Make sure the data pin in the firmware matches the pin you've wired. The CircuitPython firmware auto-detects the correct pin for supported boards (e.g. `board.GP6` on Pico, `board.D6` on Feather/XIAO, `board.A0` on QT Py). The MicroPython firmware auto-detects only RP2040/RP2350-family boards wired to GPIO 6; other boards require a manual `NEOPIXEL_PIN` override in `main.py`. See [`docs/hardware.md`](hardware.md) for the full pin table.
 
 **Check color order:**
 
@@ -368,7 +400,7 @@ The host bridge tags every serial message with a session identifier (the Copilot
 
 **Priority order** (highest → lowest):
 
-`error` → `awaiting_permission` → `working` → `subagent_active` → `compacting` → `prompt_submitted` → `session_start` → `agent_idle` → `idle` → `off`
+`error` → `awaiting_elicitation` → `awaiting_permission` → `working` → `subagent_active` → `compacting` → `prompt_submitted` → `session_start` → `agent_idle` → `idle` → `off`
 
 **What to expect:**
 
@@ -393,7 +425,7 @@ The host bridge tags every serial message with a session identifier (the Copilot
 
 3. Verify the session ID is being sent by checking for a `"session"` field in the debug output.
 
-> **Note:** Multi-session arbitration requires the CircuitPython firmware. The Arduino firmware does not parse the `session` field and operates in single-session (last-writer-wins) mode.
+> **Note:** Multi-session arbitration requires the CircuitPython or MicroPython firmware. The Arduino firmware does not parse the `session` field and operates in single-session (last-writer-wins) mode.
 
 ---
 
@@ -407,3 +439,4 @@ The host bridge tags every serial message with a session identifier (the Copilot
    The ring should respond with a white wipe animation.
 3. **Run the simulator:** `python3 -m copilot_command_ring.simulate --dry-run` to verify the host bridge logic works independently of hardware.
 4. **Check the firmware console:** Connect to the CircuitPython REPL console port and look for error tracebacks.
+5. **MicroPython boards:** Connect with `mpremote`, press Ctrl+C, and run `import main` to see any startup errors. Check that `boot.py`, `ring_cdc.py`, `neopixel_compat.py`, and `main.py` are all present with `mpremote ls`.

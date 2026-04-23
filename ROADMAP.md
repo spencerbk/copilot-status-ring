@@ -11,6 +11,7 @@ All v1 deliverables are complete.
 | **Serial protocol** | ✅ Done | Line-delimited JSON over USB serial with optional `session` field for multi-session arbitration |
 | **CircuitPython firmware** | ✅ Done | State machine with 8 animation modes, multi-session tracking, board auto-detection, stale session pruning (CircuitPython 10.x) |
 | **Arduino firmware** | ✅ Done | Semantically equivalent animations using Adafruit_NeoPixel (single-session mode) |
+| **MicroPython firmware** | ✅ Done | Full feature-parity port: multi-session tracking, TTL decay, stale pruning, dedicated USB CDC data channel via micropython-lib. Auto-detection for RP2040/RP2350 boards wired to GPIO 6; manual `NEOPIXEL_PIN` override for other layouts and ESP32 variants. Degraded stdin fallback for ESP32-C3/C6. (MicroPython 1.24+) |
 | **Host tests** | ✅ Done | Unit + integration coverage for event normalization, protocol, config, port detection, and deployment |
 | **Documentation** | ✅ Done | Hardware wiring guide, OS setup docs (Windows/macOS/Linux), troubleshooting, hook event reference |
 | **Cross-platform support** | ✅ Done | Windows (primary), macOS, Linux |
@@ -21,7 +22,7 @@ All v1 deliverables are complete.
 
 ### v1 animations
 
-off · solid · flash · blink · spinner · wipe · chase · breathing
+off · solid · flash · blink · pulse · spinner · wipe · chase · breathing
 
 ---
 
@@ -67,7 +68,7 @@ Areas where the current implementation is intentionally pragmatic and may warran
 
 | Gap | Description |
 |-----|-------------|
-| Automated firmware regression tests | CircuitPython firmware logic (state machine, session tracker, stale-idle behavior) has no test harness in this repo. Changes are validated by static analysis (Ruff + Pyright) and manual hardware testing only. A host-side simulator or split-out pure-Python tracker module could enable pytest coverage without a real MCU. |
+| Automated firmware regression tests | CircuitPython and MicroPython firmware logic (state machine, session tracker, stale-idle behavior) has no test harness in this repo. Changes are validated by static analysis (Ruff + Pyright) and manual hardware testing only. A host-side simulator or split-out pure-Python tracker module could enable pytest coverage without a real MCU. |
 | Firmware-hang surfacing | Partially addressed. Firmware now includes a 10-minute serial-silence watchdog that triggers `supervisor.reload()` when active sessions exist but no host bytes arrive, recovering from wedged USB CDC channels (common on Windows selective suspend). The host also surfaces a one-shot stderr WARNING after 3 consecutive send failures. A true host→ring heartbeat with reconnect/resync still requires a persistent host daemon (see below). |
 | USB disconnect/reconnect UX | When the ring is physically unplugged mid-session, the host logs a serial error and the hook exits silently. There is no visible host-side indicator that the ring has gone offline, and no automatic state resync when it returns. The 3-failures stderr WARNING is a minimal surface; a richer UX depends on a persistent host process. |
 | Persistent host daemon with heartbeat | Deferred. A long-running host daemon could send periodic heartbeats, detect ring disconnection, and resync session state on reconnect. Currently blocked on zero-touch auto-start across Windows / macOS / Linux — the project's constraint is that no user action beyond the initial install is required. Revisit when platform-agnostic auto-start (launchd / systemd user units / Windows Task Scheduler) can be scripted as part of `install.ps1` / `install.sh`. |
