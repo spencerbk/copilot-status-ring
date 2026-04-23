@@ -219,6 +219,40 @@ def test_normalize_notification_empty_payload():
     assert "message" not in result
 
 
+# ── notification (elicitation_dialog) ─────────────────────────────────────
+
+
+def test_normalize_elicitation_dialog_promotes_to_persistent_state():
+    result = normalize_event(
+        "notification",
+        {"notification_type": "elicitation_dialog", "message": "Choose an option"},
+    )
+    assert result["event"] == "notification"
+    assert result["state"] == "awaiting_elicitation"
+    assert result["notification_type"] == "elicitation_dialog"
+    assert result["message"] == "Choose an option"
+
+
+def test_normalize_elicitation_dialog_carries_ttl():
+    result = normalize_event(
+        "notification",
+        {"notification_type": "elicitation_dialog"},
+    )
+    assert result["state"] == "awaiting_elicitation"
+    assert isinstance(result["ttl_s"], int)
+    assert result["ttl_s"] == 600
+
+
+def test_normalize_non_elicitation_notification_stays_notify():
+    """Non-elicitation notification types remain transient ``notify``."""
+    result = normalize_event(
+        "notification",
+        {"notification_type": "info", "message": "Done"},
+    )
+    assert result["state"] == "notify"
+    assert "ttl_s" not in result
+
+
 # ── Unknown event ─────────────────────────────────────────────────────────
 
 

@@ -202,9 +202,10 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 | `preCompact` | `compacting` | wipe | cyan |
 | `errorOccurred` | `error` | flash | red |
 | `notification` | `notify` | flash (suppressed while busy) | white |
+| `notification` (`elicitation_dialog`) | `awaiting_elicitation` | pulse | yellow |
 | `sessionEnd` | `off` → `agent_idle` (breathing) | off / breathing | — |
 
-When a `notification` arrives while the ring is already showing `working`, `subagent_active`, or `compacting`, the firmware keeps the busy animation instead of interrupting it with a white flash.
+When a `notification` arrives while the ring is already showing `working`, `subagent_active`, or `compacting`, the firmware keeps the busy animation instead of interrupting it with a white flash. When the notification carries `notification_type: "elicitation_dialog"`, the ring shows a persistent yellow pulse instead — signaling that the agent is blocked waiting for user input. While that elicitation pulse is active, lower-priority transient flashes are suppressed so the ring stays yellow until the user responds; only a red `error` flash can interrupt it.
 
 The serial protocol uses JSON Lines — one JSON object per line over USB serial. See [`docs/hook-events.md`](docs/hook-events.md) for the full protocol specification.
 

@@ -92,6 +92,7 @@ COLOR_IDLE_DIM = (40, 40, 35)          # dim white
 COLOR_COMPACTING = (0, 180, 180)       # cyan
 COLOR_ERROR = (218, 54, 51)            # primer danger (#DA3633)
 COLOR_NOTIFY = (200, 200, 200)         # white
+COLOR_ELICITATION = (210, 153, 34)     # primer attention (#D29922) — same hue as permission
 
 # State → (animation_function_name, color, kwargs)
 STATE_MAP = {
@@ -107,6 +108,7 @@ STATE_MAP = {
     "tool_ok":             ("flash",     COLOR_TOOL_OK,       {"duration": 0.3}),
     "tool_error":          ("flash",     COLOR_TOOL_ERROR,    {"duration": 0.3}),
     "awaiting_permission": ("blink",     COLOR_PERMISSION,    {"period": 0.6}),
+    "awaiting_elicitation": ("pulse",    COLOR_ELICITATION,   {"period": 1.5}),
     "subagent_active":     ("chase",     COLOR_SUBAGENT,      {"spacing": 4, "period": 1.0}),
     "agent_idle":          ("breathing", COLOR_IDLE_DIM,      {"period": 3.0}),
     "compacting":          ("wipe",      COLOR_COMPACTING,    {"duration": 0.8}),
@@ -134,7 +136,8 @@ STATE_PRIORITY = {
     "subagent_active": 6,
     "working": 7,
     "awaiting_permission": 8,
-    "error": 9,
+    "awaiting_elicitation": 9,
+    "error": 10,
 }
 MAX_SESSIONS = 8
 
@@ -143,6 +146,10 @@ def should_apply_transient(persistent_state, transient):
     """Return whether *transient* should overlay *persistent_state*."""
     if transient is None:
         return False
+    # When the CLI is blocked on user input, keep the elicitation pulse visible
+    # unless a hard error occurs.
+    if persistent_state == "awaiting_elicitation":
+        return transient == "error"
     if transient != "notify":
         return True
     return persistent_state not in NOTIFY_SUPPRESSED_WHILE_BUSY
@@ -239,6 +246,8 @@ class StatusRing:
             )
         elif anim_name == "breathing":
             self._anim_breathing(color, elapsed, kwargs.get("period", 3.0))
+        elif anim_name == "pulse":
+            self._anim_pulse(color, elapsed, kwargs.get("period", 1.5))
         elif anim_name == "solid":
             self._anim_solid(color)
         else:
@@ -317,6 +326,18 @@ class StatusRing:
     def _anim_breathing(self, color, elapsed, period):
         phase = (elapsed % period) / period
         brightness = (math.sin(phase * 2.0 * math.pi - math.pi / 2.0) + 1.0) / 2.0
+        r = int(color[0] * brightness)
+        g = int(color[1] * brightness)
+        b = int(color[2] * brightness)
+        self.pixels.fill((r, g, b))
+
+    def _anim_pulse(self, color, elapsed, period):
+        # Sine wave with a raised floor so the ring never fully extinguishes.
+        # Visually distinct from breathing (which fades to black) and from
+        # blink (which is a hard on/off toggle).
+        phase = (elapsed % period) / period
+        raw = (math.sin(phase * 2.0 * math.pi - math.pi / 2.0) + 1.0) / 2.0
+        brightness = 0.15 + raw * 0.85
         r = int(color[0] * brightness)
         g = int(color[1] * brightness)
         b = int(color[2] * brightness)

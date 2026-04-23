@@ -22,7 +22,7 @@ All v1 deliverables are complete.
 
 ### v1 animations
 
-off · solid · flash · blink · spinner · wipe · chase · breathing
+off · solid · flash · blink · pulse · spinner · wipe · chase · breathing
 
 ---
 

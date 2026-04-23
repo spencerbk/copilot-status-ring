@@ -40,8 +40,11 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `errorOccurred` | `error` | Flash (long) | Red | `error`, `message`, `recoverable`, `errorContext` |
 | `sessionEnd` | `off` (→ `agent_idle` unless `idle_mode="off"`) | Off or breathing | — | `reason` |
 | `notification` | `notify` | Flash (suppressed while busy) | White | `notification_type`, `message` |
+| `notification` (`elicitation_dialog`) | `awaiting_elicitation` | Pulse (smooth sine fade) | Yellow | `notification_type`, `message` |
 
-When a `notification` arrives while the winning persistent state is `working`, `subagent_active`, or `compacting`, the firmware suppresses the white flash and leaves the busy animation running.
+When a `notification` arrives with `notification_type: "elicitation_dialog"`, the host promotes it to the persistent `awaiting_elicitation` state instead of the transient `notify` flash. This signals that the agent is blocked waiting for user input (e.g. an interactive form or choice). The pulse animation uses a raised brightness floor so the ring never fully extinguishes, distinguishing it from the hard on/off blink of `awaiting_permission`. Priority is above `awaiting_permission` but below `error`, and lower-priority transient flashes are suppressed while elicitation is active so the ring keeps pulsing yellow until the user responds.
+
+When a generic `notification` arrives while the winning persistent state is `working`, `subagent_active`, or `compacting`, the firmware suppresses the white flash and leaves the busy animation running.
 
 ---
 
@@ -120,6 +123,14 @@ These are representative JSON Lines the host bridge sends over serial. `idle_mod
 ```
 
 The host still sends the normalized `notify` message above. Busy-state suppression happens in firmware so idle sessions can still show the white notification flash.
+
+### Elicitation dialog (user input required)
+
+```json
+{"event":"notification","state":"awaiting_elicitation","notification_type":"elicitation_dialog","message":"Choose an option","ttl_s":600}
+```
+
+When the notification carries `notification_type: "elicitation_dialog"`, the host promotes the state to `awaiting_elicitation` — a persistent state with a 600 s TTL safety net.
 
 ---
 

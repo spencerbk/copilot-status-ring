@@ -400,7 +400,7 @@ The host bridge tags every serial message with a session identifier (the Copilot
 
 **Priority order** (highest → lowest):
 
-`error` → `awaiting_permission` → `working` → `subagent_active` → `compacting` → `prompt_submitted` → `session_start` → `agent_idle` → `idle` → `off`
+`error` → `awaiting_elicitation` → `awaiting_permission` → `working` → `subagent_active` → `compacting` → `prompt_submitted` → `session_start` → `agent_idle` → `idle` → `off`
 
 **What to expect:**
 

@@ -13,6 +13,7 @@ STATE_WORKING: Final[str] = "working"
 STATE_TOOL_OK: Final[str] = "tool_ok"
 STATE_TOOL_ERROR: Final[str] = "tool_error"
 STATE_AWAITING_PERMISSION: Final[str] = "awaiting_permission"
+STATE_AWAITING_ELICITATION: Final[str] = "awaiting_elicitation"
 STATE_SUBAGENT_ACTIVE: Final[str] = "subagent_active"
 STATE_AGENT_IDLE: Final[str] = "agent_idle"
 STATE_COMPACTING: Final[str] = "compacting"
@@ -72,6 +73,7 @@ STATE_TTL_DEFAULTS: Final[dict[str, int]] = {
     "prompt_submitted": 120,
     "working": 300,
     "awaiting_permission": 600,
+    "awaiting_elicitation": 600,
     "subagent_active": 300,
     "compacting": 300,
     "error": 60,
@@ -110,3 +112,8 @@ DEFAULT_DESCRIPTION_CONTAINS: Final[list[str]] = [
     "USB Serial",
     "Seeed",
 ]
+
+# ---------------------------------------------------------------------------
+# Notification types that promote to a persistent state
+# ---------------------------------------------------------------------------
+ELICITATION_NOTIFICATION_TYPE: Final[str] = "elicitation_dialog"

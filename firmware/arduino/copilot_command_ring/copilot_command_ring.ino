@@ -58,6 +58,7 @@ enum State {
   ST_TOOL_OK,
   ST_TOOL_ERROR,
   ST_AWAITING_PERMISSION,
+  ST_AWAITING_ELICITATION,
   ST_SUBAGENT_ACTIVE,
   ST_AGENT_IDLE,
   ST_COMPACTING,
@@ -76,6 +77,7 @@ static const uint32_t COL_WORKING      = Adafruit_NeoPixel::Color(133, 52, 243);
 static const uint32_t COL_TOOL_OK      = Adafruit_NeoPixel::Color(15, 191, 62);    // #0FBF3E
 static const uint32_t COL_TOOL_ERROR   = Adafruit_NeoPixel::Color(218, 54, 51);    // #DA3633
 static const uint32_t COL_PERMISSION   = Adafruit_NeoPixel::Color(210, 153, 34);   // #D29922
+static const uint32_t COL_ELICITATION  = Adafruit_NeoPixel::Color(210, 153, 34);   // #D29922 — same hue, distinct anim
 static const uint32_t COL_SUBAGENT     = Adafruit_NeoPixel::Color(200, 0, 160);    // magenta
 static const uint32_t COL_AGENT_IDLE   = Adafruit_NeoPixel::Color(40, 40, 35);
 static const uint32_t COL_COMPACTING   = Adafruit_NeoPixel::Color(0, 180, 180);
@@ -169,6 +171,7 @@ static State stateFromStr(const char* s) {
   if (strcmp(s, "tool_ok") == 0)             return ST_TOOL_OK;
   if (strcmp(s, "tool_error") == 0)          return ST_TOOL_ERROR;
   if (strcmp(s, "awaiting_permission") == 0) return ST_AWAITING_PERMISSION;
+  if (strcmp(s, "awaiting_elicitation") == 0) return ST_AWAITING_ELICITATION;
   if (strcmp(s, "subagent_active") == 0)     return ST_SUBAGENT_ACTIVE;
   if (strcmp(s, "agent_idle") == 0)          return ST_AGENT_IDLE;
   if (strcmp(s, "compacting") == 0)          return ST_COMPACTING;
@@ -363,6 +366,21 @@ static void animBreathing(uint32_t color, unsigned long period) {
 }
 
 // ---------------------------------------------------------------------------
+// Animation: pulse — sine-wave with raised floor (never fully dark)
+// Visually distinct from blink (hard on/off) and breathing (fades to near-0).
+// ---------------------------------------------------------------------------
+
+static void animPulse(uint32_t color, unsigned long period) {
+  unsigned long elapsed = millis() - stateStartMs;
+  float bright = sineBrightness(elapsed, period);
+  bright = 0.15f + bright * 0.85f;
+  uint32_t scaled = scaleColor(color, bright);
+
+  for (int i = 0; i < PIXEL_COUNT; i++) ring.setPixelColor(i, scaled);
+  ring.show();
+}
+
+// ---------------------------------------------------------------------------
 // Main animation dispatcher
 // ---------------------------------------------------------------------------
 
@@ -395,6 +413,10 @@ static void animate() {
 
     case ST_AWAITING_PERMISSION:
       animBlink(COL_PERMISSION, 800);
+      break;
+
+    case ST_AWAITING_ELICITATION:
+      animPulse(COL_ELICITATION, 1500);
       break;
 
     case ST_SUBAGENT_ACTIVE:
