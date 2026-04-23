@@ -9,7 +9,100 @@ Copilot Command Ring turns an [Adafruit NeoPixel Ring (24 RGB LEDs)](https://www
 ![MicroPython](https://img.shields.io/badge/firmware-MicroPython-2b2b2b)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-## Architecture
+## Quick Start
+
+### What you'll need
+
+- **GitHub Copilot CLI** — Install by following the [Installing GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) guide. Verify it's working by running `copilot` in your terminal.
+- **Python 3.9+** — Required for the host bridge. See the platform setup guides ([Windows](docs/setup-windows.md) · [macOS](docs/setup-macos.md) · [Linux](docs/setup-linux.md)) for OS-specific instructions.
+- **A USB microcontroller + NeoPixel Ring** — See [Hardware](#hardware) below for the parts list, or [`docs/hardware.md`](docs/hardware.md) for wiring diagrams.
+
+### 1. Install the host bridge
+
+> **Recommended:** Use a virtual environment to isolate dependencies.
+>
+> **macOS / Linux:** `python3 -m venv .venv && source .venv/bin/activate`
+> **Windows:** `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`
+>
+> Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
+
+```
+pip install git+https://github.com/spencerbk/copilot-status-ring.git
+```
+
+Or from a local clone:
+
+```
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+pip install .
+```
+
+### 2. Flash firmware
+
+#### Choosing a firmware
+
+| Feature | CircuitPython | MicroPython | Arduino |
+|---------|:---:|:---:|:---:|
+| Multi-session support | ✅ | ✅ | ❌ (last-writer-wins) |
+| NeoPixel pin auto-detect | ✅ All supported boards | ⚠️ RP2040/RP2350 only | ❌ Manual `#define` |
+| Idle breathing mode | ✅ | ✅ | ❌ |
+| Per-state TTL decay | ✅ | ✅ | ❌ |
+| Ease of flashing | Drag-and-drop `.uf2` + file copy | `.uf2` + `mpremote` commands | Arduino IDE upload |
+| **Recommended for** | Most users | MicroPython ecosystem fans | Minimal-dependency setups |
+
+> **Recommendation:** Use **CircuitPython** unless you have a specific reason to prefer another runtime. It has the broadest board auto-detection and the simplest setup.
+
+**CircuitPython (recommended):**
+
+1. Install [CircuitPython](https://circuitpython.org/downloads) on your board.
+2. Copy `firmware/circuitpython/boot.py` and `firmware/circuitpython/code.py` to the `CIRCUITPY` drive.
+3. Install the `neopixel` library from the [Adafruit CircuitPython Bundle](https://circuitpython.org/libraries) into `CIRCUITPY/lib/`.
+
+See [`firmware/circuitpython/README.md`](firmware/circuitpython/README.md) for pin auto-detection details and board-specific notes.
+
+**MicroPython:**
+
+1. Flash [MicroPython 1.24+](https://micropython.org/download/) onto your board.
+2. Install the USB CDC library: `mpremote mip install usb-device-cdc`
+3. Copy `firmware/micropython/boot.py`, `ring_cdc.py`, `main.py`, and `neopixel_compat.py` to the board using `mpremote`.
+4. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), set `NEOPIXEL_PIN` in `main.py` before resetting.
+
+See [`firmware/micropython/README.md`](firmware/micropython/README.md) for board support matrix and pin configuration.
+
+**Arduino:**
+
+1. Open `firmware/arduino/copilot_command_ring/copilot_command_ring.ino` in the Arduino IDE.
+2. Install the **Adafruit NeoPixel** library via Library Manager.
+3. Upload to your board.
+
+See [`firmware/arduino/README.md`](firmware/arduino/README.md) for board-specific pin notes. Arduino firmware is single-session only — see the [comparison table](#choosing-a-firmware) above.
+
+### 3. Activate the ring
+
+You can activate the ring **globally** (works in every repo) or **per-repo**. Global setup is recommended.
+
+**One-time global setup (recommended):**
+
+```
+copilot-command-ring setup
+```
+
+This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. The hooks record the current Python path, so they work even when the venv isn't active.
+
+**Or per-repo deploy (alternative):**
+
+```
+copilot-command-ring deploy <path-to-repo>
+```
+
+This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. Repeat for each repo where you want the ring active.
+
+> **Note:** If you recreate the virtual environment or install on a new machine, re-run `setup --force` or `deploy <path> --force` to update the recorded Python path.
+>
+> **Tip:** The hooks auto-detect your board by USB serial description. If auto-detect picks the wrong port or finds nothing, set `COPILOT_RING_PORT` explicitly.
+
+## How It Works
 
 ```
 Copilot CLI
@@ -48,98 +141,6 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 |-------|---------|----------------|
 | **Host OS** | Windows | macOS, Linux |
 | **Firmware** | CircuitPython | MicroPython, Arduino |
-
-### Choosing a firmware
-
-| Feature | CircuitPython | MicroPython | Arduino |
-|---------|:---:|:---:|:---:|
-| Multi-session support | ✅ | ✅ | ❌ (last-writer-wins) |
-| NeoPixel pin auto-detect | ✅ All supported boards | ⚠️ RP2040/RP2350 only | ❌ Manual `#define` |
-| Idle breathing mode | ✅ | ✅ | ❌ |
-| Per-state TTL decay | ✅ | ✅ | ❌ |
-| Ease of flashing | Drag-and-drop `.uf2` + file copy | `.uf2` + `mpremote` commands | Arduino IDE upload |
-| **Recommended for** | Most users | MicroPython ecosystem fans | Minimal-dependency setups |
-
-> **Recommendation:** Use **CircuitPython** unless you have a specific reason to prefer another runtime. It has the broadest board auto-detection and the simplest setup.
-
-## Prerequisites
-
-- **GitHub Copilot CLI** — This project is a hardware companion for the Copilot CLI agent. Install it by following the [Installing GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) guide. Verify it's working by running `copilot` in your terminal.
-- **Python 3.9+** — Required for the host bridge. See the platform setup guides below for installation instructions.
-
-## Quick Start
-
-### 1. Install the host bridge
-
-> **Recommended:** Use a virtual environment to isolate dependencies.
->
-> **macOS / Linux:** `python3 -m venv .venv && source .venv/bin/activate`
-> **Windows:** `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`
->
-> Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
-
-```
-pip install git+https://github.com/spencerbk/copilot-status-ring.git
-```
-
-Or from a local clone:
-
-```
-git clone https://github.com/spencerbk/copilot-status-ring.git
-cd copilot-status-ring
-pip install .
-```
-
-### 2. Flash firmware
-
-**CircuitPython (recommended):**
-
-1. Install [CircuitPython](https://circuitpython.org/downloads) on your board.
-2. Copy `firmware/circuitpython/boot.py` and `firmware/circuitpython/code.py` to the `CIRCUITPY` drive.
-3. Install the `neopixel` library from the [Adafruit CircuitPython Bundle](https://circuitpython.org/libraries) into `CIRCUITPY/lib/`.
-
-See [`firmware/circuitpython/README.md`](firmware/circuitpython/README.md) for pin auto-detection details and board-specific notes.
-
-**MicroPython:**
-
-1. Flash [MicroPython 1.24+](https://micropython.org/download/) onto your board.
-2. Install the USB CDC library: `mpremote mip install usb-device-cdc`
-3. Copy `firmware/micropython/boot.py`, `ring_cdc.py`, `main.py`, and `neopixel_compat.py` to the board using `mpremote`.
-4. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), set `NEOPIXEL_PIN` in `main.py` before resetting.
-
-See [`firmware/micropython/README.md`](firmware/micropython/README.md) for board support matrix and pin configuration.
-
-**Arduino:**
-
-1. Open `firmware/arduino/copilot_command_ring/copilot_command_ring.ino` in the Arduino IDE.
-2. Install the **Adafruit NeoPixel** library via Library Manager.
-3. Upload to your board.
-
-See [`firmware/arduino/README.md`](firmware/arduino/README.md) for board-specific pin notes. Arduino firmware is single-session only — see the [comparison table](#choosing-a-firmware).
-
-### 3. Activate the ring
-
-You can activate the ring **globally** (works in every repo) or **per-repo**. Global setup is recommended.
-
-**One-time global setup (recommended):**
-
-```
-copilot-command-ring setup
-```
-
-This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. The hooks record the current Python path, so they work even when the venv isn't active.
-
-**Or per-repo deploy (alternative):**
-
-```
-copilot-command-ring deploy <path-to-repo>
-```
-
-This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. Repeat for each repo where you want the ring active.
-
-> **Note:** If you recreate the virtual environment or install on a new machine, re-run `setup --force` or `deploy <path> --force` to update the recorded Python path.
->
-> **Tip:** The hooks auto-detect your board by USB serial description. If auto-detect picks the wrong port or finds nothing, set `COPILOT_RING_PORT` explicitly.
 
 ## Configuration
 
