@@ -110,6 +110,8 @@ pip install git+https://github.com/spencerbk/copilot-status-ring.git
 
 ### 3. Activate the ring
 
+You can activate the ring **globally** so it works in every repository automatically, or **per-repo** if you only want it in specific projects. Global setup is recommended for most users.
+
 **One-time global setup (recommended):**
 
 ```bash
