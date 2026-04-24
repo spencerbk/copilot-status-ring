@@ -83,11 +83,11 @@ def _detect_neopixel_pin():
 COLOR_OFF = (0, 0, 0)
 COLOR_SESSION_START = (60, 60, 50)     # warm white
 COLOR_PROMPT = (0, 152, 255)           # copilot blue (#0098FF)
-COLOR_WORKING = (133, 52, 243)         # copilot purple (#8534F3)
+COLOR_WORKING = (150, 56, 133)         # magenta (#963885)
 COLOR_TOOL_OK = (15, 191, 62)          # github green (#0FBF3E)
 COLOR_TOOL_ERROR = (218, 54, 51)       # primer danger (#DA3633)
 COLOR_PERMISSION = (210, 153, 34)      # primer attention (#D29922)
-COLOR_SUBAGENT = (200, 0, 160)         # magenta — distinct from working purple
+COLOR_SUBAGENT = (150, 56, 133)        # magenta (#963885) — same as working
 COLOR_IDLE_DIM = (40, 40, 35)          # dim white
 COLOR_COMPACTING = (0, 180, 180)       # cyan
 COLOR_ERROR = (218, 54, 51)            # primer danger (#DA3633)
@@ -550,7 +550,7 @@ pixels = NeoPixelCompat(_pin_num, NUM_PIXELS, brightness=BRIGHTNESS)
 
 # Startup animation — quick wipe to confirm the ring is alive
 for i in range(NUM_PIXELS):
-    pixels[i] = COLOR_WORKING  # Copilot purple
+    pixels[i] = COLOR_WORKING  # magenta
     pixels.show()
     time.sleep_ms(20)  # type: ignore[attr-defined]
 time.sleep_ms(300)  # type: ignore[attr-defined]

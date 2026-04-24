@@ -2,6 +2,15 @@
 
 This document describes every Copilot CLI hook event that the Copilot Command Ring handles, the serial protocol, and the normalized messages sent to the firmware.
 
+## Contents
+
+- [Protocol overview](#protocol-overview)
+- [Event mapping table](#event-mapping-table)
+- [Example normalized messages](#example-normalized-messages)
+- [Required and optional fields](#required-and-optional-fields)
+- [Important: stdout cleanliness](#important-stdout-cleanliness)
+- [Protocol rules](#protocol-rules)
+
 ---
 
 ## Protocol overview
@@ -29,10 +38,10 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 |-------|-------|-----------|-------|------------------|
 | `sessionStart` | `session_start` | Soft white wipe | White | — |
 | `userPromptSubmitted` | `prompt_submitted` | Wipe | Blue | — |
-| `preToolUse` | `working` | Spinner | Purple | `tool` |
+| `preToolUse` | `working` | Spinner | Magenta | `tool` |
 | `postToolUse` (success) | `tool_ok` | Short flash | Green | `tool`, `result` |
 | `postToolUseFailure` | `tool_error` | Red flash | Red | `tool`, `error` |
-| `permissionRequest` | `working` | Spinner | Purple | `tool` |
+| `permissionRequest` | `working` | Spinner | Magenta | `tool` |
 | `subagentStart` | `subagent_active` | Chase | Magenta | `agent` |
 | `subagentStop` | `idle` | Return to idle | — | `agent` |
 | `agentStop` | `agent_idle` | Dim breathing | White (dim) | `reason` |

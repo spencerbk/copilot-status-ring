@@ -2,6 +2,16 @@
 
 This guide covers wiring, parts, and power for the Copilot Command Ring.
 
+## Contents
+
+- [Parts list](#parts-list)
+- [Wiring diagram](#wiring-diagram)
+- [Recommended boards](#recommended-boards)
+- [Wire gauge](#wire-gauge)
+- [Power notes](#power-notes)
+- [Level shifting](#level-shifting)
+- [Safety notes](#safety-notes)
+
 ---
 
 ## Parts list
