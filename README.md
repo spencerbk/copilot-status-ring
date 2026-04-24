@@ -211,7 +211,7 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 | `postToolUse` (denied) | `tool_denied` | flash | amber |
 | `postToolUse` (failure) | `tool_error` | flash | red |
 | `postToolUseFailure` | `tool_error` | flash | red |
-| `permissionRequest` | `working` | spinner | magenta |
+| `permissionRequest` | `awaiting_permission` | blink | yellow |
 | `subagentStart` | `subagent_active` | chase | magenta |
 | `subagentStop` | `idle` | off | — |
 | `agentStop` | `agent_idle` | breathing | dim white |

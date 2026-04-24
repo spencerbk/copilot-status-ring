@@ -194,7 +194,7 @@ def test_normalize_post_tool_use_failure_empty_payload():
 def test_normalize_permission_request_extracts_tool():
     payload = _load_fixture("permissionRequest.json")
     result = normalize_event("permissionRequest", payload)
-    assert result["state"] == "working"
+    assert result["state"] == "awaiting_permission"
     assert result["tool"] == "bash"
 
 
@@ -441,6 +441,50 @@ def test_pre_tool_use_regular_tool_carries_working_ttl():
     assert result["state"] == "working"
     assert isinstance(result["ttl_s"], int)
     assert result["ttl_s"] > 0
+
+
+def test_all_ttl_states_are_reachable():
+    """Every persistent state with a TTL must be reachable from some event path.
+
+    Catches orphaned states — states fully defined in firmware, priority,
+    and TTL tables but never routed to by any event mapping or runtime
+    promotion.  This is the class of bug where a new state is wired up
+    everywhere *except* the event-to-state routing.
+    """
+    from copilot_command_ring.constants import (
+        ELICITATION_NOTIFICATION_TYPE,
+        ELICITATION_TOOL_NAMES,
+        EVENT_STATE_MAP,
+        STATE_TTL_DEFAULTS,
+    )
+
+    # States reachable via direct EVENT_STATE_MAP values
+    reachable: set[str] = set(EVENT_STATE_MAP.values())
+
+    # States reachable via runtime promotions in normalize_event:
+    #  - preToolUse with user-input tools → awaiting_elicitation
+    #  - notification with elicitation_dialog → awaiting_elicitation
+    #  - postToolUse denied/failure → tool_denied/tool_error
+    for tool_name in ELICITATION_TOOL_NAMES:
+        result = normalize_event("preToolUse", {"toolName": tool_name})
+        reachable.add(result["state"])
+    elicitation_result = normalize_event(
+        "notification",
+        {"notification_type": ELICITATION_NOTIFICATION_TYPE},
+    )
+    reachable.add(elicitation_result["state"])
+    for result_type, _expected_state in [("denied", "tool_denied"), ("failure", "tool_error")]:
+        result = normalize_event(
+            "postToolUse",
+            {"toolName": "x", "toolResult": {"resultType": result_type}},
+        )
+        reachable.add(result["state"])
+
+    orphaned = set(STATE_TTL_DEFAULTS.keys()) - reachable
+    assert not orphaned, (
+        f"States with TTL defaults but no event path: {sorted(orphaned)}. "
+        "Ensure EVENT_STATE_MAP or a normalize_event promotion routes to these states."
+    )
 
 
 def test_awaiting_permission_has_longer_ttl_than_working():

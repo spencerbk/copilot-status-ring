@@ -33,7 +33,7 @@ EVENT_STATE_MAP: Final[dict[str, str]] = {
     "preToolUse": STATE_WORKING,
     "postToolUse": STATE_TOOL_OK,
     "postToolUseFailure": STATE_TOOL_ERROR,
-    "permissionRequest": STATE_WORKING,
+    "permissionRequest": STATE_AWAITING_PERMISSION,
     "subagentStart": STATE_SUBAGENT_ACTIVE,
     "subagentStop": STATE_IDLE,
     "agentStop": STATE_AGENT_IDLE,

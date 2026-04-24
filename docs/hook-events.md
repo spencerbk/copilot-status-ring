@@ -44,7 +44,7 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `postToolUse` (denied) | `tool_denied` | Short flash | Amber | `tool`, `result` |
 | `postToolUse` (failure) | `tool_error` | Red flash | Red | `tool`, `result` |
 | `postToolUseFailure` | `tool_error` | Red flash | Red | `tool`, `error` |
-| `permissionRequest` | `working` | Spinner | Magenta | `tool` |
+| `permissionRequest` | `awaiting_permission` | Blink | Yellow | `tool` |
 | `subagentStart` | `subagent_active` | Chase | Magenta | `agent` |
 | `subagentStop` | `idle` | Return to idle | — | `agent` |
 | `agentStop` | `agent_idle` | Dim breathing | White (dim) | `reason` |
@@ -119,7 +119,7 @@ When a `preToolUse` event fires for a tool that blocks on user input (currently 
 ### Permissions
 
 ```json
-{"event":"permissionRequest","state":"working","tool":"bash"}
+{"event":"permissionRequest","state":"awaiting_permission","tool":"bash"}
 ```
 
 ### Sub-agents
