@@ -10,7 +10,7 @@ All v1 deliverables are complete.
 | **Hook integration** | ✅ Done | Global hooks via `copilot-command-ring setup` (one-time, all repos) + per-repo `.github/hooks/` via `copilot-command-ring deploy` |
 | **Serial protocol** | ✅ Done | Line-delimited JSON over USB serial with optional `session` field for multi-session arbitration |
 | **CircuitPython firmware** | ✅ Done | State machine with 8 animation modes, multi-session tracking, board auto-detection, stale session pruning (CircuitPython 10.x) |
-| **Arduino firmware** | ✅ Done | Semantically equivalent animations using Adafruit_NeoPixel (single-session mode) |
+| **Arduino firmware** | ✅ Done | Full feature parity with CircuitPython: multi-session tracking (8 concurrent), TTL decay, stale pruning, priority arbitration, transient overlay, idle mode, startup animation, brightness boost, dual JSON parser, watchdog (RP2040), serial silence timeout, error recovery |
 | **MicroPython firmware** | ✅ Done | Full feature-parity port: multi-session tracking, TTL decay, stale pruning, dedicated USB CDC data channel via micropython-lib. Auto-detection for RP2040/RP2350 boards wired to GPIO 6; manual `NEOPIXEL_PIN` override for other layouts and ESP32 variants. Degraded stdin fallback for ESP32-C3/C6. (MicroPython 1.24+) |
 | **Host tests** | ✅ Done | Unit + integration coverage for event normalization, protocol, config, port detection, and deployment |
 | **Documentation** | ✅ Done | Hardware wiring guide, OS setup docs (Windows/macOS/Linux), troubleshooting, hook event reference |
