@@ -149,6 +149,7 @@ class TestTransientPolicyConsistency:
             ("awaiting_elicitation", "notify"),
             ("awaiting_elicitation", "tool_ok"),
             ("awaiting_elicitation", "tool_error"),
+            ("awaiting_elicitation", "tool_denied"),
             ("awaiting_elicitation", "error"),
             ("agent_idle", "notify"),
             ("off", None),

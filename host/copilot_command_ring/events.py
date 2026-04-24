@@ -8,10 +8,13 @@ import os
 
 from .constants import (
     ELICITATION_NOTIFICATION_TYPE,
+    ELICITATION_TOOL_NAMES,
     ENV_CLI_PID,
     EVENT_STATE_MAP,
     STATE_AWAITING_ELICITATION,
     STATE_IDLE,
+    STATE_TOOL_DENIED,
+    STATE_TOOL_ERROR,
     STATE_TTL_DEFAULTS,
 )
 
@@ -40,14 +43,29 @@ def normalize_event(
     if event_name == "sessionEnd":
         _set_if(out, "reason", payload.get("reason"))
 
+    elif event_name == "sessionStart":
+        _set_if(out, "source", payload.get("source"))
+
     elif event_name == "preToolUse":
-        _set_if(out, "tool", payload.get("toolName"))
+        tool_name = payload.get("toolName")
+        _set_if(out, "tool", tool_name)
+        # Tools that block on user input promote to awaiting_elicitation
+        # so the ring shows a yellow pulse instead of the working spinner.
+        if isinstance(tool_name, str) and tool_name in ELICITATION_TOOL_NAMES:
+            out["state"] = STATE_AWAITING_ELICITATION
 
     elif event_name == "postToolUse":
         _set_if(out, "tool", payload.get("toolName"))
         result_obj = payload.get("toolResult")
         if isinstance(result_obj, dict):
-            _set_if(out, "result", result_obj.get("resultType"))
+            result_type = result_obj.get("resultType")
+            _set_if(out, "result", result_type)
+            # Override state based on resultType so the ring doesn't show
+            # green for denied or failed tool executions.
+            if result_type == "denied":
+                out["state"] = STATE_TOOL_DENIED
+            elif result_type == "failure":
+                out["state"] = STATE_TOOL_ERROR
 
     elif event_name == "postToolUseFailure":
         _set_if(out, "tool", payload.get("toolName"))

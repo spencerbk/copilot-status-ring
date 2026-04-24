@@ -74,6 +74,7 @@ COLOR_PROMPT = (0, 152, 255)           # copilot blue (#0098FF)
 COLOR_WORKING = (150, 56, 133)         # magenta (#963885)
 COLOR_TOOL_OK = (15, 191, 62)          # github green (#0FBF3E)
 COLOR_TOOL_ERROR = (218, 54, 51)       # primer danger (#DA3633)
+COLOR_TOOL_DENIED = (210, 153, 34)     # primer attention (#D29922) — user denied a tool
 COLOR_PERMISSION = (210, 153, 34)      # primer attention (#D29922)
 COLOR_SUBAGENT = (150, 56, 133)        # magenta (#963885) — same as working
 COLOR_IDLE_DIM = (40, 40, 35)          # dim white
@@ -95,6 +96,7 @@ STATE_MAP = {
     ),
     "tool_ok":             ("flash",     COLOR_TOOL_OK,       {"duration": 0.3}),
     "tool_error":          ("flash",     COLOR_TOOL_ERROR,    {"duration": 0.3}),
+    "tool_denied":         ("flash",     COLOR_TOOL_DENIED,   {"duration": 0.3}),
     "awaiting_permission": ("blink",     COLOR_PERMISSION,    {"period": 0.6}),
     "awaiting_elicitation": ("pulse",    COLOR_ELICITATION,   {"period": 1.5}),
     "subagent_active":     ("chase",     COLOR_SUBAGENT,      {"spacing": 4, "period": 1.0}),
@@ -105,7 +107,7 @@ STATE_MAP = {
 }
 
 # States that auto-return to the previous state after their animation
-TRANSIENT_STATES = {"tool_ok", "tool_error", "error", "notify"}
+TRANSIENT_STATES = {"tool_ok", "tool_error", "tool_denied", "error", "notify"}
 
 # States that get a brightness boost for visibility
 BOOSTED_STATES = {"agent_idle"}

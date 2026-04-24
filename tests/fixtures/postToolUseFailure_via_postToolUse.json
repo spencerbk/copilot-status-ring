@@ -1,0 +1,8 @@
+{
+  "toolName": "bash",
+  "toolCallId": "call_011",
+  "toolResult": {
+    "resultType": "failure",
+    "textResultForLlm": "Command exited with code 1"
+  }
+}

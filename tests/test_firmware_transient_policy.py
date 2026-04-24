@@ -53,13 +53,13 @@ def test_notify_is_suppressed_for_busy_states(busy_state: str) -> None:
     assert policy.should_apply_transient(busy_state, "notify") is False
 
 
-@pytest.mark.parametrize("transient", ["tool_ok", "tool_error", "error"])
+@pytest.mark.parametrize("transient", ["tool_ok", "tool_error", "tool_denied", "error"])
 def test_non_notify_transients_still_apply_while_busy(transient: str) -> None:
     policy = _load_transient_policy()
     assert policy.should_apply_transient("working", transient) is True
 
 
-@pytest.mark.parametrize("transient", ["tool_ok", "tool_error", "notify"])
+@pytest.mark.parametrize("transient", ["tool_ok", "tool_error", "tool_denied", "notify"])
 def test_lower_priority_transients_are_suppressed_while_awaiting_elicitation(
     transient: str,
 ) -> None:

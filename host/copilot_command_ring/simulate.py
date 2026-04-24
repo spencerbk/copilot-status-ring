@@ -14,13 +14,17 @@ from .logging_util import get_logger
 from .sender import send_event
 
 DEFAULT_SEQUENCE: list[tuple[str, dict[str, object]]] = [
-    ("sessionStart", {}),
+    ("sessionStart", {"source": "new"}),
     ("userPromptSubmitted", {}),
     ("preToolUse", {"toolName": "edit"}),
     ("postToolUse", {"toolName": "edit", "toolResult": {"resultType": "success"}}),
+    ("preToolUse", {"toolName": "grep"}),
+    ("postToolUse", {"toolName": "grep", "toolResult": {"resultType": "denied"}}),
     ("preToolUse", {"toolName": "bash"}),
     ("postToolUseFailure", {"toolName": "bash", "error": "Command failed"}),
     ("permissionRequest", {"toolName": "bash"}),
+    ("preToolUse", {"toolName": "ask_user"}),
+    ("postToolUse", {"toolName": "ask_user", "toolResult": {"resultType": "success"}}),
     ("subagentStart", {"agentName": "reviewer"}),
     ("subagentStop", {"agentName": "reviewer"}),
     ("preCompact", {"trigger": "auto"}),

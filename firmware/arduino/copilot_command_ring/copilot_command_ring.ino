@@ -57,6 +57,7 @@ enum State {
   ST_WORKING,
   ST_TOOL_OK,
   ST_TOOL_ERROR,
+  ST_TOOL_DENIED,
   ST_AWAITING_PERMISSION,
   ST_AWAITING_ELICITATION,
   ST_SUBAGENT_ACTIVE,
@@ -76,6 +77,7 @@ static const uint32_t COL_PROMPT       = Adafruit_NeoPixel::Color(0, 152, 255); 
 static const uint32_t COL_WORKING      = Adafruit_NeoPixel::Color(150, 56, 133);   // magenta (#963885)
 static const uint32_t COL_TOOL_OK      = Adafruit_NeoPixel::Color(15, 191, 62);    // #0FBF3E
 static const uint32_t COL_TOOL_ERROR   = Adafruit_NeoPixel::Color(218, 54, 51);    // #DA3633
+static const uint32_t COL_TOOL_DENIED  = Adafruit_NeoPixel::Color(210, 153, 34);   // #D29922 — user denied a tool
 static const uint32_t COL_PERMISSION   = Adafruit_NeoPixel::Color(210, 153, 34);   // #D29922
 static const uint32_t COL_ELICITATION  = Adafruit_NeoPixel::Color(210, 153, 34);   // #D29922 — same hue, distinct anim
 static const uint32_t COL_SUBAGENT     = Adafruit_NeoPixel::Color(150, 56, 133);   // magenta (#963885)
@@ -128,7 +130,7 @@ static uint32_t scaleColor(uint32_t color, float factor) {
 // ---------------------------------------------------------------------------
 
 static bool isTransient(State s) {
-  return (s == ST_TOOL_OK || s == ST_TOOL_ERROR || s == ST_ERROR || s == ST_NOTIFY);
+  return (s == ST_TOOL_OK || s == ST_TOOL_ERROR || s == ST_TOOL_DENIED || s == ST_ERROR || s == ST_NOTIFY);
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +172,7 @@ static State stateFromStr(const char* s) {
   if (strcmp(s, "working") == 0)             return ST_WORKING;
   if (strcmp(s, "tool_ok") == 0)             return ST_TOOL_OK;
   if (strcmp(s, "tool_error") == 0)          return ST_TOOL_ERROR;
+  if (strcmp(s, "tool_denied") == 0)         return ST_TOOL_DENIED;
   if (strcmp(s, "awaiting_permission") == 0) return ST_AWAITING_PERMISSION;
   if (strcmp(s, "awaiting_elicitation") == 0) return ST_AWAITING_ELICITATION;
   if (strcmp(s, "subagent_active") == 0)     return ST_SUBAGENT_ACTIVE;
@@ -409,6 +412,10 @@ static void animate() {
 
     case ST_TOOL_ERROR:
       animFlash(COL_TOOL_ERROR, 400);
+      break;
+
+    case ST_TOOL_DENIED:
+      animFlash(COL_TOOL_DENIED, 400);
       break;
 
     case ST_AWAITING_PERMISSION:
