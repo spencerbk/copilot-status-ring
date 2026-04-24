@@ -33,6 +33,21 @@ def test_normalize_session_start_with_payload():
     assert result["state"] == "session_start"
 
 
+def test_normalize_session_start_extracts_source():
+    result = normalize_event("sessionStart", {"source": "resume"})
+    assert result["source"] == "resume"
+
+
+def test_normalize_session_start_source_new():
+    result = normalize_event("sessionStart", {"source": "new"})
+    assert result["source"] == "new"
+
+
+def test_normalize_session_start_missing_source_omits_field():
+    result = normalize_event("sessionStart", {})
+    assert "source" not in result
+
+
 # ── sessionEnd ────────────────────────────────────────────────────────────
 
 
@@ -76,6 +91,28 @@ def test_normalize_pre_tool_use_empty_payload_omits_tool():
     assert "tool" not in result
 
 
+# ── preToolUse (user-input tools → awaiting_elicitation) ─────────────────
+
+
+def test_normalize_pre_tool_use_ask_user_promotes_to_elicitation():
+    result = normalize_event("preToolUse", {"toolName": "ask_user"})
+    assert result["state"] == "awaiting_elicitation"
+    assert result["tool"] == "ask_user"
+
+
+def test_normalize_pre_tool_use_exit_plan_mode_promotes_to_elicitation_legacy_alias():
+    result = normalize_event("preToolUse", {"toolName": "exit_plan_mode"})
+    assert result["state"] == "awaiting_elicitation"
+    assert result["tool"] == "exit_plan_mode"
+
+
+def test_normalize_pre_tool_use_regular_tool_stays_working():
+    """Non-elicitation tools should keep the default 'working' state."""
+    result = normalize_event("preToolUse", {"toolName": "edit"})
+    assert result["state"] == "working"
+    assert result["tool"] == "edit"
+
+
 # ── postToolUse ───────────────────────────────────────────────────────────
 
 
@@ -96,6 +133,40 @@ def test_normalize_post_tool_use_missing_tool_result():
 def test_normalize_post_tool_use_non_dict_tool_result():
     result = normalize_event("postToolUse", {"toolName": "x", "toolResult": "string"})
     assert result["tool"] == "x"
+    assert "result" not in result
+
+
+def test_normalize_post_tool_use_denied_maps_to_tool_denied():
+    payload = _load_fixture("postToolUseDenied.json")
+    result = normalize_event("postToolUse", payload)
+    assert result["state"] == "tool_denied"
+    assert result["tool"] == "bash"
+    assert result["result"] == "denied"
+
+
+def test_normalize_post_tool_use_failure_via_result_type():
+    payload = _load_fixture("postToolUseFailure_via_postToolUse.json")
+    result = normalize_event("postToolUse", payload)
+    assert result["state"] == "tool_error"
+    assert result["tool"] == "bash"
+    assert result["result"] == "failure"
+
+
+def test_normalize_post_tool_use_success_stays_tool_ok():
+    """Explicit success resultType keeps the default tool_ok state."""
+    payload = {
+        "toolName": "edit",
+        "toolResult": {"resultType": "success", "textResultForLlm": "ok"},
+    }
+    result = normalize_event("postToolUse", payload)
+    assert result["state"] == "tool_ok"
+    assert result["result"] == "success"
+
+
+def test_normalize_post_tool_use_no_result_type_stays_tool_ok():
+    """Missing resultType (backward compat) keeps tool_ok."""
+    result = normalize_event("postToolUse", {"toolName": "edit", "toolResult": {}})
+    assert result["state"] == "tool_ok"
     assert "result" not in result
 
 
@@ -253,6 +324,30 @@ def test_normalize_non_elicitation_notification_stays_notify():
     assert "ttl_s" not in result
 
 
+# ── notification (permission_prompt) ──────────────────────────────────────
+
+
+def test_normalize_permission_prompt_promotes_to_persistent_state():
+    result = normalize_event(
+        "notification",
+        {"notification_type": "permission_prompt", "message": "Edit file: foo.py"},
+    )
+    assert result["event"] == "notification"
+    assert result["state"] == "awaiting_permission"
+    assert result["notification_type"] == "permission_prompt"
+    assert result["message"] == "Edit file: foo.py"
+
+
+def test_normalize_permission_prompt_carries_ttl():
+    result = normalize_event(
+        "notification",
+        {"notification_type": "permission_prompt"},
+    )
+    assert result["state"] == "awaiting_permission"
+    assert isinstance(result["ttl_s"], int)
+    assert result["ttl_s"] == 600
+
+
 # ── Unknown event ─────────────────────────────────────────────────────────
 
 
@@ -270,6 +365,27 @@ def test_normalize_includes_session_when_env_set(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("COPILOT_RING_CLI_PID", "42")
     result = normalize_event("preToolUse", {"toolName": "edit"})
     assert result["session"] == "42"
+
+
+def test_normalize_prefers_payload_session_id_over_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A payload sessionId takes precedence over the wrapper fallback."""
+    monkeypatch.setenv("COPILOT_RING_CLI_PID", "42")
+    result = normalize_event(
+        "preToolUse",
+        {"toolName": "edit", "sessionId": "payload-session"},
+    )
+    assert result["session"] == "payload-session"
+
+
+def test_normalize_uses_payload_session_id_without_env() -> None:
+    """A payload sessionId is enough to populate the session field."""
+    result = normalize_event(
+        "preToolUse",
+        {"toolName": "edit", "sessionId": "payload-session"},
+    )
+    assert result["session"] == "payload-session"
 
 
 def test_normalize_omits_session_when_env_unset(monkeypatch: pytest.MonkeyPatch):
@@ -358,11 +474,69 @@ def test_normalize_empty_payload_does_not_crash(event_name: str):
 # ── Cross-cutting: per-state ttl_s defaults ──────────────────────────────
 
 
-def test_working_state_carries_ttl():
+def test_pre_tool_use_ask_user_carries_elicitation_ttl():
+    result = normalize_event("preToolUse", {"toolName": "ask_user"})
+    assert result["state"] == "awaiting_elicitation"
+    assert isinstance(result["ttl_s"], int)
+    assert result["ttl_s"] == 600
+
+
+def test_pre_tool_use_regular_tool_carries_working_ttl():
     result = normalize_event("preToolUse", {"toolName": "edit"})
     assert result["state"] == "working"
     assert isinstance(result["ttl_s"], int)
     assert result["ttl_s"] > 0
+
+
+def test_all_ttl_states_are_reachable():
+    """Every persistent state with a TTL must be reachable from some event path.
+
+    Catches orphaned states — states fully defined in firmware, priority,
+    and TTL tables but never routed to by any event mapping or runtime
+    promotion.  This is the class of bug where a new state is wired up
+    everywhere *except* the event-to-state routing.
+    """
+    from copilot_command_ring.constants import (
+        ELICITATION_NOTIFICATION_TYPE,
+        ELICITATION_TOOL_NAMES,
+        EVENT_STATE_MAP,
+        PERMISSION_NOTIFICATION_TYPE,
+        STATE_TTL_DEFAULTS,
+    )
+
+    # States reachable via direct EVENT_STATE_MAP values
+    reachable: set[str] = set(EVENT_STATE_MAP.values())
+
+    # States reachable via runtime promotions in normalize_event:
+    #  - preToolUse with user-input tools → awaiting_elicitation
+    #  - notification with elicitation_dialog → awaiting_elicitation
+    #  - notification with permission_prompt → awaiting_permission
+    #  - postToolUse denied/failure → tool_denied/tool_error
+    for tool_name in ELICITATION_TOOL_NAMES:
+        result = normalize_event("preToolUse", {"toolName": tool_name})
+        reachable.add(result["state"])
+    elicitation_result = normalize_event(
+        "notification",
+        {"notification_type": ELICITATION_NOTIFICATION_TYPE},
+    )
+    reachable.add(elicitation_result["state"])
+    permission_result = normalize_event(
+        "notification",
+        {"notification_type": PERMISSION_NOTIFICATION_TYPE},
+    )
+    reachable.add(permission_result["state"])
+    for result_type, _expected_state in [("denied", "tool_denied"), ("failure", "tool_error")]:
+        result = normalize_event(
+            "postToolUse",
+            {"toolName": "x", "toolResult": {"resultType": result_type}},
+        )
+        reachable.add(result["state"])
+
+    orphaned = set(STATE_TTL_DEFAULTS.keys()) - reachable
+    assert not orphaned, (
+        f"States with TTL defaults but no event path: {sorted(orphaned)}. "
+        "Ensure EVENT_STATE_MAP or a normalize_event promotion routes to these states."
+    )
 
 
 def test_awaiting_permission_has_longer_ttl_than_working():
@@ -387,6 +561,13 @@ def test_transient_states_have_no_ttl():
     ok = normalize_event("postToolUse", {"toolName": "edit"})
     assert ok["state"] == "tool_ok"
     assert "ttl_s" not in ok
+
+    denied = normalize_event(
+        "postToolUse",
+        {"toolName": "bash", "toolResult": {"resultType": "denied"}},
+    )
+    assert denied["state"] == "tool_denied"
+    assert "ttl_s" not in denied
 
     notify = normalize_event("notification", {})
     assert notify["state"] == "notify"

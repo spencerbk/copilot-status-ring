@@ -1,4 +1,7 @@
 {
+  "timestamp": 1704614400000,
+  "cwd": "/path/to/project",
+  "source": "new",
   "copilotVersion": "1.87.0",
   "extensionId": "github.copilot-cli",
   "sessionId": "abc123-def456"

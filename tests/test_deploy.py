@@ -155,6 +155,14 @@ class TestRenderHookScripts:
         result = _render_hook_ps1(r"C:\Program Files\Python312\python.exe")
         assert r"C:\Program Files\Python312\python.exe" in result
 
+    def test_ps1_reads_process_stdin_without_param_block(self) -> None:
+        result = _render_hook_ps1("/usr/bin/python3")
+        assert "$EventName = $args[0]" in result
+        assert "function Read-JsonFrame" in result
+        assert "$StdinData = Read-JsonFrame" in result
+        assert "[Parameter(Mandatory=$true, Position=0)]" not in result
+        assert "[Console]::In.ReadToEnd()" not in result
+
     def test_sh_quotes_path_with_spaces(self) -> None:
         result = _render_hook_sh("/home/user/my project/.venv/bin/python")
         assert "my project" in result

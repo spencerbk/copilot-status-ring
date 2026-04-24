@@ -1,0 +1,8 @@
+{
+  "toolName": "bash",
+  "toolCallId": "call_010",
+  "toolResult": {
+    "resultType": "denied",
+    "textResultForLlm": "Tool use was denied by the user"
+  }
+}

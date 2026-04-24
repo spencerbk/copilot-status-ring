@@ -8,10 +8,15 @@ import os
 
 from .constants import (
     ELICITATION_NOTIFICATION_TYPE,
+    ELICITATION_TOOL_NAMES,
     ENV_CLI_PID,
     EVENT_STATE_MAP,
+    PERMISSION_NOTIFICATION_TYPE,
     STATE_AWAITING_ELICITATION,
+    STATE_AWAITING_PERMISSION,
     STATE_IDLE,
+    STATE_TOOL_DENIED,
+    STATE_TOOL_ERROR,
     STATE_TTL_DEFAULTS,
 )
 
@@ -20,6 +25,16 @@ def _set_if(out: dict[str, object], key: str, value: object) -> None:
     """Add *key* to *out* only when *value* is not ``None``."""
     if value is not None:
         out[key] = value
+
+
+def _session_value(payload: dict[str, object]) -> str | None:
+    """Return the best available session identifier for multi-session tracking."""
+    payload_session = payload.get("sessionId")
+    if isinstance(payload_session, str) and payload_session:
+        return payload_session
+
+    env_session = os.environ.get(ENV_CLI_PID)
+    return env_session or None
 
 
 def normalize_event(
@@ -40,14 +55,29 @@ def normalize_event(
     if event_name == "sessionEnd":
         _set_if(out, "reason", payload.get("reason"))
 
+    elif event_name == "sessionStart":
+        _set_if(out, "source", payload.get("source"))
+
     elif event_name == "preToolUse":
-        _set_if(out, "tool", payload.get("toolName"))
+        tool_name = payload.get("toolName")
+        _set_if(out, "tool", tool_name)
+        # Tools that block on user input promote to awaiting_elicitation
+        # so the ring shows a yellow pulse instead of the working spinner.
+        if isinstance(tool_name, str) and tool_name in ELICITATION_TOOL_NAMES:
+            out["state"] = STATE_AWAITING_ELICITATION
 
     elif event_name == "postToolUse":
         _set_if(out, "tool", payload.get("toolName"))
         result_obj = payload.get("toolResult")
         if isinstance(result_obj, dict):
-            _set_if(out, "result", result_obj.get("resultType"))
+            result_type = result_obj.get("resultType")
+            _set_if(out, "result", result_type)
+            # Override state based on resultType so the ring doesn't show
+            # green for denied or failed tool executions.
+            if result_type == "denied":
+                out["state"] = STATE_TOOL_DENIED
+            elif result_type == "failure":
+                out["state"] = STATE_TOOL_ERROR
 
     elif event_name == "postToolUseFailure":
         _set_if(out, "tool", payload.get("toolName"))
@@ -80,9 +110,16 @@ def normalize_event(
         # blocked waiting for user input and the ring should stay lit.
         if payload.get("notification_type") == ELICITATION_NOTIFICATION_TYPE:
             out["state"] = STATE_AWAITING_ELICITATION
+        # Permission prompts promote similarly — the user is blocked on an
+        # interactive approval dialog. This only fires in non-yolo mode;
+        # auto-approved permissions never emit a permission_prompt notification.
+        elif payload.get("notification_type") == PERMISSION_NOTIFICATION_TYPE:
+            out["state"] = STATE_AWAITING_PERMISSION
 
-    # Session ID for multi-session firmware arbitration
-    _set_if(out, "session", os.environ.get(ENV_CLI_PID))
+    # Session ID for multi-session firmware arbitration. Prefer the stable
+    # Copilot sessionId from the hook payload; fall back to the wrapper's
+    # process-derived ID for older runtimes or empty payloads.
+    _set_if(out, "session", _session_value(payload))
 
     # Optional TTL so the firmware can decay stuck persistent states to
     # agent_idle if no refresh arrives within the window. Transient states

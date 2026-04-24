@@ -12,6 +12,7 @@ STATE_PROMPT_SUBMITTED: Final[str] = "prompt_submitted"
 STATE_WORKING: Final[str] = "working"
 STATE_TOOL_OK: Final[str] = "tool_ok"
 STATE_TOOL_ERROR: Final[str] = "tool_error"
+STATE_TOOL_DENIED: Final[str] = "tool_denied"
 STATE_AWAITING_PERMISSION: Final[str] = "awaiting_permission"
 STATE_AWAITING_ELICITATION: Final[str] = "awaiting_elicitation"
 STATE_SUBAGENT_ACTIVE: Final[str] = "subagent_active"
@@ -117,3 +118,15 @@ DEFAULT_DESCRIPTION_CONTAINS: Final[list[str]] = [
 # Notification types that promote to a persistent state
 # ---------------------------------------------------------------------------
 ELICITATION_NOTIFICATION_TYPE: Final[str] = "elicitation_dialog"
+PERMISSION_NOTIFICATION_TYPE: Final[str] = "permission_prompt"
+
+# ---------------------------------------------------------------------------
+# Tool names that block on user input. ``ask_user`` is current; keep the
+# older ``exit_plan_mode`` alias for compatibility with prior runtimes.
+# When preToolUse fires for one of these, the host promotes the state to
+# awaiting_elicitation so the ring shows a yellow pulse instead of a
+# purple working spinner.
+# ---------------------------------------------------------------------------
+ELICITATION_TOOL_NAMES: Final[frozenset[str]] = frozenset(
+    {"ask_user", "exit_plan_mode"},
+)

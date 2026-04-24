@@ -347,7 +347,7 @@ The Copilot CLI is misinterpreting hook output.
 
 **Root cause:** The `preToolUse` and `permissionRequest` hooks interpret anything written to **stdout** as a control response (e.g. a permission decision). If the hook accidentally prints to stdout, Copilot CLI may error.
 
-**Fix:** Ensure the hook writes nothing to stdout. All diagnostic output goes to stderr.
+**Fix:** Ensure the hook writes nothing to stdout. All diagnostic output goes to stderr. If this starts after upgrading the package, re-run `copilot-command-ring setup --force` (or `deploy --force` for per-repo hooks) so the wrapper scripts match the installed code.
 
 **Debug safely:**
 
@@ -441,7 +441,7 @@ The host bridge tags every serial message with a session identifier (the Copilot
 
 3. Verify the session ID is being sent by checking for a `"session"` field in the debug output.
 
-> **Note:** Multi-session arbitration requires the CircuitPython or MicroPython firmware. The Arduino firmware does not parse the `session` field and operates in single-session (last-writer-wins) mode.
+> **Note:** Multi-session arbitration is supported by all three firmware variants (CircuitPython, MicroPython, and Arduino).
 
 ---
 
