@@ -131,7 +131,7 @@ Create `.copilot-command-ring.local.json` in your project root and add a `serial
    - Copy `firmware/circuitpython/boot.py` to `CIRCUITPY/boot.py`
    - Copy `firmware/circuitpython/code.py` to `CIRCUITPY/code.py`
    - Install `neopixel.mpy` from the [Adafruit CircuitPython Bundle](https://circuitpython.org/libraries) into `CIRCUITPY/lib/`
-6. The board reboots automatically. The ring should show a purple wipe animation on startup, confirming the firmware is running.
+6. The board reboots automatically. The ring should show a magenta wipe animation on startup, confirming the firmware is running.
 
 > **Note:** After copying `boot.py`, you must **unplug and replug** the board so the USB CDC data channel activates and the device appears as "Copilot Command Ring" in Device Manager. The COM port number may change.
 
@@ -155,7 +155,7 @@ Use MicroPython instead of CircuitPython if you prefer the MicroPython ecosystem
    mpremote cp firmware/micropython/neopixel_compat.py :neopixel_compat.py
    mpremote cp firmware/micropython/main.py :main.py
    ```
-6. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), edit `main.py` and set `NEOPIXEL_PIN` to the correct GPIO number before resetting. Then reset the board. The ring should show a purple wipe animation on startup.
+6. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), edit `main.py` and set `NEOPIXEL_PIN` to the correct GPIO number before resetting. Then reset the board. The ring should show a magenta wipe animation on startup.
 
 > **Note:** After the first boot with `boot.py`, the board creates a second CDC channel. Unplug and replug the board — the COM port number may change. See [`firmware/micropython/README.md`](../firmware/micropython/README.md) for board-specific details.
 

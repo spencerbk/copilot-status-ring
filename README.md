@@ -205,10 +205,10 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 |-------|-------|-----------|-------|
 | `sessionStart` | `session_start` | wipe | warm white |
 | `userPromptSubmitted` | `prompt_submitted` | wipe | blue |
-| `preToolUse` | `working` | spinner | purple |
+| `preToolUse` | `working` | spinner | magenta |
 | `postToolUse` | `tool_ok` | flash | green |
 | `postToolUseFailure` | `tool_error` | flash | red |
-| `permissionRequest` | `working` | spinner | purple |
+| `permissionRequest` | `working` | spinner | magenta |
 | `subagentStart` | `subagent_active` | chase | magenta |
 | `subagentStop` | `idle` | off | — |
 | `agentStop` | `agent_idle` | breathing | dim white |

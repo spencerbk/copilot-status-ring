@@ -73,7 +73,7 @@ enum State {
 
 static const uint32_t COL_SESSION_START = Adafruit_NeoPixel::Color(60, 60, 50);
 static const uint32_t COL_PROMPT       = Adafruit_NeoPixel::Color(0, 152, 255);    // #0098FF
-static const uint32_t COL_WORKING      = Adafruit_NeoPixel::Color(133, 52, 243);   // #8534F3
+static const uint32_t COL_WORKING      = Adafruit_NeoPixel::Color(150, 56, 133);   // magenta (#963885)
 static const uint32_t COL_TOOL_OK      = Adafruit_NeoPixel::Color(15, 191, 62);    // #0FBF3E
 static const uint32_t COL_TOOL_ERROR   = Adafruit_NeoPixel::Color(218, 54, 51);    // #DA3633
 static const uint32_t COL_PERMISSION   = Adafruit_NeoPixel::Color(210, 153, 34);   // #D29922
