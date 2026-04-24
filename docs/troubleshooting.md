@@ -441,7 +441,7 @@ The host bridge tags every serial message with a session identifier (the Copilot
 
 3. Verify the session ID is being sent by checking for a `"session"` field in the debug output.
 
-> **Note:** Multi-session arbitration requires the CircuitPython or MicroPython firmware. The Arduino firmware does not parse the `session` field and operates in single-session (last-writer-wins) mode.
+> **Note:** Multi-session arbitration is supported by all three firmware variants (CircuitPython, MicroPython, and Arduino).
 
 ---
 

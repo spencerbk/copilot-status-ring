@@ -57,12 +57,12 @@ pip install .
 
 | Feature | CircuitPython | MicroPython | Arduino |
 |---------|:---:|:---:|:---:|
-| Multi-session support | ✅ | ✅ | ❌ (last-writer-wins) |
+| Multi-session support | ✅ | ✅ | ✅ |
 | NeoPixel pin auto-detect | ✅ All supported boards | ⚠️ RP2040/RP2350 only | ❌ Manual `#define` |
-| Idle breathing mode | ✅ | ✅ | ❌ |
-| Per-state TTL decay | ✅ | ✅ | ❌ |
+| Idle breathing mode | ✅ | ✅ | ✅ |
+| Per-state TTL decay | ✅ | ✅ | ✅ |
 | Ease of flashing | Drag-and-drop `.uf2` + file copy | `.uf2` + `mpremote` commands | Arduino IDE upload |
-| **Recommended for** | Most users | MicroPython ecosystem fans | Minimal-dependency setups |
+| **Recommended for** | Most users | MicroPython ecosystem fans | Arduino ecosystem fans |
 
 > **Recommendation:** Use **CircuitPython** unless you have a specific reason to prefer another runtime. It has the broadest board auto-detection and the simplest setup.
 
@@ -89,7 +89,7 @@ See [`firmware/micropython/README.md`](firmware/micropython/README.md) for board
 2. Install the **Adafruit NeoPixel** library via Library Manager.
 3. Upload to your board.
 
-See [`firmware/arduino/README.md`](firmware/arduino/README.md) for board-specific pin notes. Arduino firmware is single-session only — see the [comparison table](#choosing-a-firmware) above.
+See [`firmware/arduino/README.md`](firmware/arduino/README.md) for board-specific pin notes and configuration options.
 
 ### 3. Activate the ring
 
@@ -304,7 +304,7 @@ Quick checks:
 - **Ring not responding?** Verify the serial port with `COPILOT_RING_LOG_LEVEL=DEBUG` and check the connection.
 - **No hooks firing?** Run `copilot-command-ring setup` (global) or `copilot-command-ring deploy <path>` (per-repo). See [Quick Start](#quick-start) step 3.
 - **Permission errors?** Linux: add your user to the `dialout` group. macOS: check `/dev/tty.*` permissions.
-- **Multiple sessions?** Fully supported (CircuitPython/MicroPython firmware). The ring shows the highest-priority state across all active sessions. Stale sessions are pruned after 5 minutes. Arduino firmware is single-session only.
+- **Multiple sessions?** Fully supported across all three firmware variants. The ring shows the highest-priority state across all active sessions. Stale sessions are pruned after 5 minutes.
 
 See also: [`docs/setup-windows.md`](docs/setup-windows.md) · [`docs/setup-macos.md`](docs/setup-macos.md) · [`docs/setup-linux.md`](docs/setup-linux.md)
 
