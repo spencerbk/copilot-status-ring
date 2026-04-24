@@ -2,6 +2,20 @@
 
 Step-by-step guide to set up the Copilot Command Ring on Windows.
 
+## Contents
+
+- [0. Install GitHub Copilot CLI](#0-install-github-copilot-cli)
+- [1. Install Python](#1-install-python)
+- [2. Install the host bridge](#2-install-the-host-bridge)
+- [3. Find your COM port](#3-find-your-com-port)
+- [4. Configure the serial port](#4-configure-the-serial-port)
+- [5. Flash CircuitPython firmware](#5-flash-circuitpython-firmware)
+- [5b. Flash MicroPython firmware (alternative)](#5b-flash-micropython-firmware-alternative)
+- [6. Activate the ring](#6-activate-the-ring)
+- [7. Test with dry-run simulation](#7-test-with-dry-run-simulation)
+- [8. Verify hooks load in Copilot CLI](#8-verify-hooks-load-in-copilot-cli)
+- [Environment variables reference](#environment-variables-reference)
+
 ---
 
 ## 0. Install GitHub Copilot CLI

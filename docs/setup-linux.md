@@ -2,6 +2,21 @@
 
 Step-by-step guide to set up the Copilot Command Ring on Linux.
 
+## Contents
+
+- [0. Install GitHub Copilot CLI](#0-install-github-copilot-cli)
+- [1. Install Python 3](#1-install-python-3)
+- [2. Install the host bridge](#2-install-the-host-bridge)
+- [3. Find your serial device](#3-find-your-serial-device)
+- [4. Add your user to the `dialout` group](#4-add-your-user-to-the-dialout-group)
+- [5. Configure the serial port](#5-configure-the-serial-port)
+- [6. Flash CircuitPython firmware](#6-flash-circuitpython-firmware)
+- [6b. Flash MicroPython firmware (alternative)](#6b-flash-micropython-firmware-alternative)
+- [7. Activate the ring](#7-activate-the-ring)
+- [8. Test with simulation](#8-test-with-simulation)
+- [9. Verify hooks](#9-verify-hooks)
+- [Environment variables reference](#environment-variables-reference)
+
 ---
 
 ## 0. Install GitHub Copilot CLI

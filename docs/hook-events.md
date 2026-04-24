@@ -2,6 +2,15 @@
 
 This document describes every Copilot CLI hook event that the Copilot Command Ring handles, the serial protocol, and the normalized messages sent to the firmware.
 
+## Contents
+
+- [Protocol overview](#protocol-overview)
+- [Event mapping table](#event-mapping-table)
+- [Example normalized messages](#example-normalized-messages)
+- [Required and optional fields](#required-and-optional-fields)
+- [Important: stdout cleanliness](#important-stdout-cleanliness)
+- [Protocol rules](#protocol-rules)
+
 ---
 
 ## Protocol overview
