@@ -347,7 +347,7 @@ The Copilot CLI is misinterpreting hook output.
 
 **Root cause:** The `preToolUse` and `permissionRequest` hooks interpret anything written to **stdout** as a control response (e.g. a permission decision). If the hook accidentally prints to stdout, Copilot CLI may error.
 
-**Fix:** Ensure the hook writes nothing to stdout. All diagnostic output goes to stderr.
+**Fix:** Ensure the hook writes nothing to stdout. All diagnostic output goes to stderr. If this starts after upgrading the package, re-run `copilot-command-ring setup --force` (or `deploy --force` for per-repo hooks) so the wrapper scripts match the installed code.
 
 **Debug safely:**
 

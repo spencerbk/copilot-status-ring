@@ -33,7 +33,7 @@ EVENT_STATE_MAP: Final[dict[str, str]] = {
     "preToolUse": STATE_WORKING,
     "postToolUse": STATE_TOOL_OK,
     "postToolUseFailure": STATE_TOOL_ERROR,
-    "permissionRequest": STATE_AWAITING_PERMISSION,
+    "permissionRequest": STATE_WORKING,
     "subagentStart": STATE_SUBAGENT_ACTIVE,
     "subagentStop": STATE_IDLE,
     "agentStop": STATE_AGENT_IDLE,
@@ -118,6 +118,7 @@ DEFAULT_DESCRIPTION_CONTAINS: Final[list[str]] = [
 # Notification types that promote to a persistent state
 # ---------------------------------------------------------------------------
 ELICITATION_NOTIFICATION_TYPE: Final[str] = "elicitation_dialog"
+PERMISSION_NOTIFICATION_TYPE: Final[str] = "permission_prompt"
 
 # ---------------------------------------------------------------------------
 # Tool names that block on user input. ``ask_user`` is current; keep the

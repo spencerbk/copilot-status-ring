@@ -211,7 +211,7 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 | `postToolUse` (denied) | `tool_denied` | flash | amber |
 | `postToolUse` (failure) | `tool_error` | flash | red |
 | `postToolUseFailure` | `tool_error` | flash | red |
-| `permissionRequest` | `awaiting_permission` | blink | yellow |
+| `permissionRequest` | `working` | spinner | magenta |
 | `subagentStart` | `subagent_active` | chase | magenta |
 | `subagentStop` | `idle` | off | — |
 | `agentStop` | `agent_idle` | breathing | dim white |
@@ -219,13 +219,14 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 | `errorOccurred` | `error` | flash | red |
 | `notification` | `notify` | flash (suppressed while busy) | white |
 | `notification` (`elicitation_dialog`) | `awaiting_elicitation` | pulse | yellow |
+| `notification` (`permission_prompt`) | `awaiting_permission` | pulse | yellow |
 | `sessionEnd` | `off` → `agent_idle` (breathing) | off / breathing | — |
 
 When a `preToolUse` event fires for a tool that blocks on user input (currently `ask_user`), the host promotes it to `awaiting_elicitation` so the ring pulses yellow instead of showing the purple working spinner. For backward compatibility, the host also recognizes older `exit_plan_mode` tool events the same way.
 
 When a `postToolUse` event includes `toolResult.resultType`, the host distinguishes `success` (green `tool_ok`), `denied` (amber `tool_denied`), and `failure` (red `tool_error`) instead of always flashing green.
 
-When a `notification` arrives while the ring is already showing `working`, `subagent_active`, or `compacting`, the firmware keeps the busy animation instead of interrupting it with a white flash. When the notification carries `notification_type: "elicitation_dialog"`, the ring shows a persistent yellow pulse instead — signaling that the agent is blocked waiting for user input. While that elicitation pulse is active, lower-priority transient flashes are suppressed so the ring stays yellow until the user responds; only a red `error` flash can interrupt it.
+When a `notification` arrives while the ring is already showing `working`, `subagent_active`, or `compacting`, the firmware keeps the busy animation instead of interrupting it with a white flash. When the notification carries `notification_type: "elicitation_dialog"`, the ring shows a persistent yellow pulse instead — signaling that the agent is blocked waiting for user input. Similarly, `notification_type: "permission_prompt"` promotes to `awaiting_permission` — this only fires when the user is actually blocked on an interactive permission dialog (not in `--yolo` mode). While that pulse is active, lower-priority transient flashes are suppressed so the ring stays yellow until the user responds; only a red `error` flash can interrupt it.
 
 The serial protocol uses JSON Lines — one JSON object per line over USB serial. See [`docs/hook-events.md`](docs/hook-events.md) for the full protocol specification.
 

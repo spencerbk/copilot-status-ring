@@ -44,7 +44,7 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `postToolUse` (denied) | `tool_denied` | Short flash | Amber | `tool`, `result` |
 | `postToolUse` (failure) | `tool_error` | Red flash | Red | `tool`, `result` |
 | `postToolUseFailure` | `tool_error` | Red flash | Red | `tool`, `error` |
-| `permissionRequest` | `awaiting_permission` | Blink | Yellow | `tool` |
+| `permissionRequest` | `working` | Spinner | Magenta | `tool` |
 | `subagentStart` | `subagent_active` | Chase | Magenta | `agent` |
 | `subagentStop` | `idle` | Return to idle | — | `agent` |
 | `agentStop` | `agent_idle` | Dim breathing | White (dim) | `reason` |
@@ -53,8 +53,11 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `sessionEnd` | `off` (→ `agent_idle` unless `idle_mode="off"`) | Off or breathing | — | `reason` |
 | `notification` | `notify` | Flash (suppressed while busy) | White | `notification_type`, `message` |
 | `notification` (`elicitation_dialog`) | `awaiting_elicitation` | Pulse (smooth sine fade) | Yellow | `notification_type`, `message` |
+| `notification` (`permission_prompt`) | `awaiting_permission` | Pulse (hard on/off blink) | Yellow | `notification_type`, `message` |
 
 When a `notification` arrives with `notification_type: "elicitation_dialog"`, the host promotes it to the persistent `awaiting_elicitation` state instead of the transient `notify` flash. This signals that the agent is blocked waiting for user input (e.g. an interactive form or choice). The pulse animation uses a raised brightness floor so the ring never fully extinguishes, distinguishing it from the hard on/off blink of `awaiting_permission`. Priority is above `awaiting_permission` but below `error`, and lower-priority transient flashes are suppressed while elicitation is active so the ring keeps pulsing yellow until the user responds.
+
+When a `notification` arrives with `notification_type: "permission_prompt"`, the host promotes it to the persistent `awaiting_permission` state. This fires only when the user is actually blocked on an interactive permission dialog — in `--yolo` mode, permissions are auto-approved and no `permission_prompt` notification is emitted. The `permissionRequest` hook event itself always maps to `working` because it fires for both interactive and auto-approved permissions.
 
 When a generic `notification` arrives while the winning persistent state is `working`, `subagent_active`, or `compacting`, the firmware suppresses the white flash and leaves the busy animation running.
 
@@ -119,8 +122,16 @@ When a `preToolUse` event fires for a tool that blocks on user input (currently 
 ### Permissions
 
 ```json
-{"event":"permissionRequest","state":"awaiting_permission","tool":"bash"}
+{"event":"permissionRequest","state":"working","tool":"bash"}
 ```
+
+The `permissionRequest` hook fires for both interactive and auto-approved (yolo) permissions, so it always maps to `working`. When the user is actually blocked on a permission dialog, the Copilot CLI also emits a `notification` with `notification_type: "permission_prompt"`:
+
+```json
+{"event":"notification","state":"awaiting_permission","notification_type":"permission_prompt","message":"Edit file: foo.py","ttl_s":600,"idle_mode":"breathing"}
+```
+
+In `--yolo` mode, no `permission_prompt` notification is emitted — the ring stays on the purple working spinner.
 
 ### Sub-agents
 
@@ -181,7 +192,7 @@ When the notification carries `notification_type: "elicitation_dialog"`, the hos
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `session` | string | Copilot CLI session identifier (PID). Enables multi-session arbitration on firmware. |
+| `session` | string | Copilot CLI session identifier. The host prefers the hook payload's `sessionId` and falls back to the wrapper-derived process ID for older or empty payloads. Enables multi-session arbitration on firmware. |
 | `source` | string | How the session was initiated: `"new"`, `"resume"`, or `"startup"`. Forwarded from `sessionStart` for diagnostics. |
 | `tool` | string | Tool name (e.g. `bash`, `edit`, `grep`) |
 | `result` | string | Tool execution result |

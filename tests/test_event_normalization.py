@@ -194,7 +194,7 @@ def test_normalize_post_tool_use_failure_empty_payload():
 def test_normalize_permission_request_extracts_tool():
     payload = _load_fixture("permissionRequest.json")
     result = normalize_event("permissionRequest", payload)
-    assert result["state"] == "awaiting_permission"
+    assert result["state"] == "working"
     assert result["tool"] == "bash"
 
 
@@ -324,6 +324,30 @@ def test_normalize_non_elicitation_notification_stays_notify():
     assert "ttl_s" not in result
 
 
+# ── notification (permission_prompt) ──────────────────────────────────────
+
+
+def test_normalize_permission_prompt_promotes_to_persistent_state():
+    result = normalize_event(
+        "notification",
+        {"notification_type": "permission_prompt", "message": "Edit file: foo.py"},
+    )
+    assert result["event"] == "notification"
+    assert result["state"] == "awaiting_permission"
+    assert result["notification_type"] == "permission_prompt"
+    assert result["message"] == "Edit file: foo.py"
+
+
+def test_normalize_permission_prompt_carries_ttl():
+    result = normalize_event(
+        "notification",
+        {"notification_type": "permission_prompt"},
+    )
+    assert result["state"] == "awaiting_permission"
+    assert isinstance(result["ttl_s"], int)
+    assert result["ttl_s"] == 600
+
+
 # ── Unknown event ─────────────────────────────────────────────────────────
 
 
@@ -341,6 +365,27 @@ def test_normalize_includes_session_when_env_set(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("COPILOT_RING_CLI_PID", "42")
     result = normalize_event("preToolUse", {"toolName": "edit"})
     assert result["session"] == "42"
+
+
+def test_normalize_prefers_payload_session_id_over_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A payload sessionId takes precedence over the wrapper fallback."""
+    monkeypatch.setenv("COPILOT_RING_CLI_PID", "42")
+    result = normalize_event(
+        "preToolUse",
+        {"toolName": "edit", "sessionId": "payload-session"},
+    )
+    assert result["session"] == "payload-session"
+
+
+def test_normalize_uses_payload_session_id_without_env() -> None:
+    """A payload sessionId is enough to populate the session field."""
+    result = normalize_event(
+        "preToolUse",
+        {"toolName": "edit", "sessionId": "payload-session"},
+    )
+    assert result["session"] == "payload-session"
 
 
 def test_normalize_omits_session_when_env_unset(monkeypatch: pytest.MonkeyPatch):
@@ -455,6 +500,7 @@ def test_all_ttl_states_are_reachable():
         ELICITATION_NOTIFICATION_TYPE,
         ELICITATION_TOOL_NAMES,
         EVENT_STATE_MAP,
+        PERMISSION_NOTIFICATION_TYPE,
         STATE_TTL_DEFAULTS,
     )
 
@@ -464,6 +510,7 @@ def test_all_ttl_states_are_reachable():
     # States reachable via runtime promotions in normalize_event:
     #  - preToolUse with user-input tools → awaiting_elicitation
     #  - notification with elicitation_dialog → awaiting_elicitation
+    #  - notification with permission_prompt → awaiting_permission
     #  - postToolUse denied/failure → tool_denied/tool_error
     for tool_name in ELICITATION_TOOL_NAMES:
         result = normalize_event("preToolUse", {"toolName": tool_name})
@@ -473,6 +520,11 @@ def test_all_ttl_states_are_reachable():
         {"notification_type": ELICITATION_NOTIFICATION_TYPE},
     )
     reachable.add(elicitation_result["state"])
+    permission_result = normalize_event(
+        "notification",
+        {"notification_type": PERMISSION_NOTIFICATION_TYPE},
+    )
+    reachable.add(permission_result["state"])
     for result_type, _expected_state in [("denied", "tool_denied"), ("failure", "tool_error")]:
         result = normalize_event(
             "postToolUse",

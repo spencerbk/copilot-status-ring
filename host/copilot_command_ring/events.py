@@ -11,7 +11,9 @@ from .constants import (
     ELICITATION_TOOL_NAMES,
     ENV_CLI_PID,
     EVENT_STATE_MAP,
+    PERMISSION_NOTIFICATION_TYPE,
     STATE_AWAITING_ELICITATION,
+    STATE_AWAITING_PERMISSION,
     STATE_IDLE,
     STATE_TOOL_DENIED,
     STATE_TOOL_ERROR,
@@ -23,6 +25,16 @@ def _set_if(out: dict[str, object], key: str, value: object) -> None:
     """Add *key* to *out* only when *value* is not ``None``."""
     if value is not None:
         out[key] = value
+
+
+def _session_value(payload: dict[str, object]) -> str | None:
+    """Return the best available session identifier for multi-session tracking."""
+    payload_session = payload.get("sessionId")
+    if isinstance(payload_session, str) and payload_session:
+        return payload_session
+
+    env_session = os.environ.get(ENV_CLI_PID)
+    return env_session or None
 
 
 def normalize_event(
@@ -98,9 +110,16 @@ def normalize_event(
         # blocked waiting for user input and the ring should stay lit.
         if payload.get("notification_type") == ELICITATION_NOTIFICATION_TYPE:
             out["state"] = STATE_AWAITING_ELICITATION
+        # Permission prompts promote similarly — the user is blocked on an
+        # interactive approval dialog. This only fires in non-yolo mode;
+        # auto-approved permissions never emit a permission_prompt notification.
+        elif payload.get("notification_type") == PERMISSION_NOTIFICATION_TYPE:
+            out["state"] = STATE_AWAITING_PERMISSION
 
-    # Session ID for multi-session firmware arbitration
-    _set_if(out, "session", os.environ.get(ENV_CLI_PID))
+    # Session ID for multi-session firmware arbitration. Prefer the stable
+    # Copilot sessionId from the hook payload; fall back to the wrapper's
+    # process-derived ID for older runtimes or empty payloads.
+    _set_if(out, "session", _session_value(payload))
 
     # Optional TTL so the firmware can decay stuck persistent states to
     # agent_idle if no refresh arrives within the window. Transient states

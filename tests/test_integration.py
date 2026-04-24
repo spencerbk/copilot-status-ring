@@ -191,6 +191,20 @@ class TestHookMainIntegration:
         assert result.stdout == ""
         assert '"session": "12345"' in result.stderr or '"session":"12345"' in result.stderr
 
+    def test_payload_session_id_overrides_env(self) -> None:
+        """A payload sessionId wins over the wrapper fallback env var."""
+        result = _run_hook(
+            "preToolUse",
+            {"toolName": "edit", "sessionId": "payload-session"},
+            extra_env={"COPILOT_RING_CLI_PID": "12345"},
+        )
+        assert result.returncode == 0
+        assert result.stdout == ""
+        assert (
+            '"session": "payload-session"' in result.stderr
+            or '"session":"payload-session"' in result.stderr
+        )
+
     def test_no_session_field_without_env(self) -> None:
         """Without COPILOT_RING_CLI_PID, no session field in output."""
         result = _run_hook("preToolUse", {"toolName": "edit"})
