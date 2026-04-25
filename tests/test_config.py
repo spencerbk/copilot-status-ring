@@ -19,6 +19,7 @@ from copilot_command_ring.constants import (
     ENV_BRIGHTNESS,
     ENV_DRY_RUN,
     ENV_LOCK_TIMEOUT,
+    ENV_PIXEL_COUNT,
     ENV_PORT,
 )
 
@@ -137,6 +138,23 @@ def test_config_file_overrides_pixel_count(tmp_path, monkeypatch):
     assert cfg.pixel_count == 12
 
 
+def test_invalid_config_file_pixel_count_is_ignored(tmp_path, monkeypatch):
+    monkeypatch.delenv(ENV_PIXEL_COUNT, raising=False)
+    config_file = tmp_path / ".copilot-command-ring.local.json"
+    config_file.write_text(json.dumps({"pixel_count": 0}), encoding="utf-8")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.pixel_count == DEFAULT_PIXEL_COUNT
+
+
+@pytest.mark.parametrize("value", [-0.1, 1.1])
+def test_invalid_config_file_brightness_is_ignored(value, tmp_path, monkeypatch):
+    monkeypatch.delenv(ENV_BRIGHTNESS, raising=False)
+    config_file = tmp_path / ".copilot-command-ring.local.json"
+    config_file.write_text(json.dumps({"brightness": value}), encoding="utf-8")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.brightness == DEFAULT_BRIGHTNESS
+
+
 def test_config_file_overrides_device_match(tmp_path, monkeypatch):
     monkeypatch.delenv(ENV_PORT, raising=False)
     config_file = tmp_path / ".copilot-command-ring.local.json"
@@ -173,6 +191,14 @@ def test_env_brightness_overrides_file(tmp_path, monkeypatch):
     assert cfg.brightness == pytest.approx(0.75)
 
 
+def test_env_pixel_count_overrides_file(tmp_path, monkeypatch):
+    config_file = tmp_path / ".copilot-command-ring.local.json"
+    config_file.write_text(json.dumps({"pixel_count": 12}), encoding="utf-8")
+    monkeypatch.setenv(ENV_PIXEL_COUNT, "48")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.pixel_count == 48
+
+
 def test_env_lock_timeout_overrides_file(tmp_path, monkeypatch):
     config_file = tmp_path / ".copilot-command-ring.local.json"
     config_file.write_text(json.dumps({"lock_timeout": 1.0}), encoding="utf-8")
@@ -194,6 +220,20 @@ def test_invalid_env_baud_is_ignored(tmp_path, monkeypatch):
 
 def test_invalid_env_brightness_is_ignored(tmp_path, monkeypatch):
     monkeypatch.setenv(ENV_BRIGHTNESS, "bright")
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.brightness == DEFAULT_BRIGHTNESS
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "many"])
+def test_invalid_env_pixel_count_is_ignored(value: str, tmp_path, monkeypatch):
+    monkeypatch.setenv(ENV_PIXEL_COUNT, value)
+    cfg = load_config(config_dir=tmp_path)
+    assert cfg.pixel_count == DEFAULT_PIXEL_COUNT
+
+
+@pytest.mark.parametrize("value", ["-0.1", "1.1"])
+def test_out_of_range_env_brightness_is_ignored(value: str, tmp_path, monkeypatch):
+    monkeypatch.setenv(ENV_BRIGHTNESS, value)
     cfg = load_config(config_dir=tmp_path)
     assert cfg.brightness == DEFAULT_BRIGHTNESS
 

@@ -69,6 +69,27 @@ def _record_success() -> None:
         _write_failure_count(0)
 
 
+def prepare_message(config: Config, message: dict[str, object]) -> dict[str, object]:
+    """Return *message* with host runtime display configuration added.
+
+    The caller's dictionary is never mutated. Existing keys are preserved so
+    tests and tools can intentionally override a runtime field when needed.
+    """
+    runtime_config: dict[str, object] = {
+        "idle_mode": config.idle_mode,
+        "brightness": config.brightness,
+        "pixel_count": config.pixel_count,
+    }
+    missing = {
+        key: value
+        for key, value in runtime_config.items()
+        if key not in message
+    }
+    if not missing:
+        return dict(message)
+    return {**message, **missing}
+
+
 def send_event(config: Config, message: dict[str, object]) -> bool:
     """Send a JSON-line message to the device over serial.
 
@@ -80,12 +101,10 @@ def send_event(config: Config, message: dict[str, object]) -> bool:
     """
     log = get_logger()
 
-    # Carry idle_mode on every outgoing message so the firmware can honor
-    # the user's preference when sessions end or go silent. Injected here
+    # Carry runtime display config on every outgoing message. Injected here
     # (rather than in events.py) because this is where Config is in scope
     # and the write is stateless — every hook invocation tags its own line.
-    if "idle_mode" not in message:
-        message = {**message, "idle_mode": config.idle_mode}
+    message = prepare_message(config, message)
 
     if config.dry_run:
         log.info("[dry-run] %s", format_message_for_log(message))

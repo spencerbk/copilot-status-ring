@@ -15,7 +15,7 @@ from copilot_command_ring.constants import (
     FAILURE_COUNTER_FILENAME,
 )
 from copilot_command_ring.protocol import serialize_message
-from copilot_command_ring.sender import send_event
+from copilot_command_ring.sender import prepare_message, send_event
 
 
 def _make_config(**overrides: object) -> Config:
@@ -144,8 +144,7 @@ class TestSendEventSuccess:
         ):
             send_event(config, SAMPLE_MESSAGE)
 
-        # idle_mode is injected into every message before serialization.
-        expected_data = serialize_message({**SAMPLE_MESSAGE, "idle_mode": config.idle_mode})
+        expected_data = serialize_message(prepare_message(config, SAMPLE_MESSAGE))
         mock_ser.write.assert_called_once_with(expected_data)
 
     def test_uses_configured_lock_timeout(self) -> None:
@@ -246,8 +245,8 @@ class TestSendEventLockTimeout:
         fake_serial.Serial.assert_not_called()
 
 
-class TestIdleModeInjection:
-    """Every outgoing message carries the resolved idle_mode."""
+class TestRuntimeConfigInjection:
+    """Every outgoing message carries resolved runtime display config."""
 
     def _fake_serial_success(self) -> tuple[MagicMock, MagicMock]:
         mock_ser = MagicMock()
@@ -258,8 +257,8 @@ class TestIdleModeInjection:
         fake_serial.SerialTimeoutException = OSError
         return mock_ser, fake_serial
 
-    def test_breathing_is_injected_by_default(self) -> None:
-        config = _make_config(idle_mode="breathing")
+    def test_runtime_config_is_injected_by_default(self) -> None:
+        config = _make_config(idle_mode="breathing", brightness=0.25, pixel_count=16)
         mock_ser, fake_serial = self._fake_serial_success()
         with (
             patch("copilot_command_ring.sender.serial", fake_serial),
@@ -272,6 +271,8 @@ class TestIdleModeInjection:
 
         sent = mock_ser.write.call_args[0][0].decode("utf-8")
         assert '"idle_mode":"breathing"' in sent
+        assert '"brightness":0.25' in sent
+        assert '"pixel_count":16' in sent
 
     def test_off_mode_is_injected(self) -> None:
         config = _make_config(idle_mode="off")
@@ -288,10 +289,15 @@ class TestIdleModeInjection:
         sent = mock_ser.write.call_args[0][0].decode("utf-8")
         assert '"idle_mode":"off"' in sent
 
-    def test_existing_idle_mode_is_preserved(self) -> None:
+    def test_existing_runtime_config_is_preserved(self) -> None:
         config = _make_config(idle_mode="breathing")
         mock_ser, fake_serial = self._fake_serial_success()
-        message: dict[str, object] = {**SAMPLE_MESSAGE, "idle_mode": "off"}
+        message: dict[str, object] = {
+            **SAMPLE_MESSAGE,
+            "idle_mode": "off",
+            "brightness": 0.5,
+            "pixel_count": 12,
+        }
         with (
             patch("copilot_command_ring.sender.serial", fake_serial),
             patch(
@@ -304,6 +310,10 @@ class TestIdleModeInjection:
         sent = mock_ser.write.call_args[0][0].decode("utf-8")
         assert '"idle_mode":"off"' in sent
         assert '"idle_mode":"breathing"' not in sent
+        assert '"brightness":0.5' in sent
+        assert '"brightness":0.04' not in sent
+        assert '"pixel_count":12' in sent
+        assert '"pixel_count":24' not in sent
 
     def test_caller_message_is_not_mutated(self) -> None:
         config = _make_config(idle_mode="breathing")
@@ -319,8 +329,10 @@ class TestIdleModeInjection:
             send_event(config, message)
 
         assert "idle_mode" not in message
+        assert "brightness" not in message
+        assert "pixel_count" not in message
 
-    def test_dry_run_logs_idle_mode(
+    def test_dry_run_logs_runtime_config(
         self,
         capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
@@ -336,6 +348,8 @@ class TestIdleModeInjection:
         captured = capsys.readouterr()
         assert "idle_mode" in captured.err
         assert "breathing" in captured.err
+        assert "brightness" in captured.err
+        assert "pixel_count" in captured.err
 
         # Reset the cached logger so later tests get a fresh one at the
         # default level.
