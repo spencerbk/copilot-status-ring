@@ -65,44 +65,44 @@ When a generic `notification` arrives while the winning persistent state is `wor
 
 ## Example normalized messages
 
-These are representative JSON Lines the host bridge sends over serial. `idle_mode` is injected on every message in real traffic, `ttl_s` appears on persistent states that auto-decay, and `session` is omitted below for readability. Each message is a single line terminated by `\n`.
+These are representative JSON Lines the host bridge sends over serial. `idle_mode`, `brightness`, and `pixel_count` are injected on every message in real traffic, `ttl_s` appears on persistent states that auto-decay, and `session` is omitted below for readability. Each message is a single line terminated by `\n`.
 
 ### Session lifecycle
 
 ```json
-{"event":"sessionStart","state":"session_start","source":"new","ttl_s":60,"idle_mode":"breathing"}
+{"event":"sessionStart","state":"session_start","source":"new","ttl_s":60,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 The `source` field indicates how the session was initiated: `"new"` (fresh session), `"resume"` (resumed from a prior context), or `"startup"` (agent auto-started). The firmware ignores this field — it is forwarded for diagnostic/logging purposes.
 
 ```json
-{"event":"sessionEnd","state":"off","reason":"user_exit","idle_mode":"breathing"}
+{"event":"sessionEnd","state":"off","reason":"user_exit","idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 ### User input
 
 ```json
-{"event":"userPromptSubmitted","state":"prompt_submitted","ttl_s":120,"idle_mode":"breathing"}
+{"event":"userPromptSubmitted","state":"prompt_submitted","ttl_s":120,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 ### Tool usage
 
 ```json
-{"event":"preToolUse","state":"working","tool":"edit","ttl_s":300,"idle_mode":"breathing"}
+{"event":"preToolUse","state":"working","tool":"edit","ttl_s":300,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 ```json
-{"event":"postToolUse","state":"tool_ok","tool":"edit","result":"success"}
+{"event":"postToolUse","state":"tool_ok","tool":"edit","result":"success","idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 ```json
-{"event":"postToolUseFailure","state":"tool_error","tool":"bash","error":"Command failed"}
+{"event":"postToolUseFailure","state":"tool_error","tool":"bash","error":"Command failed","idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 ### Tool denied by user
 
 ```json
-{"event":"postToolUse","state":"tool_denied","tool":"grep","result":"denied"}
+{"event":"postToolUse","state":"tool_denied","tool":"grep","result":"denied","idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 When a `postToolUse` event carries `resultType: "denied"` in `toolResult`, the host maps it to `tool_denied` — an amber flash that distinguishes user-denied tools from successful completions. The `resultType` field supports three values:
@@ -114,7 +114,7 @@ When a `postToolUse` event carries `resultType: "denied"` in `toolResult`, the h
 ### User-input tools (elicitation via preToolUse)
 
 ```json
-{"event":"preToolUse","state":"awaiting_elicitation","tool":"ask_user","ttl_s":600,"idle_mode":"breathing"}
+{"event":"preToolUse","state":"awaiting_elicitation","tool":"ask_user","ttl_s":600,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 When a `preToolUse` event fires for a tool that blocks on user input (currently `ask_user`), the host promotes the state from `working` to `awaiting_elicitation`. This displays the yellow pulse animation instead of the purple spinner, signaling that the agent is waiting for user input rather than actively processing. The Copilot CLI `notification` mechanism with `elicitation_dialog` does not fire for these tools — the `preToolUse` tool-name check is the reliable detection path. For backward compatibility, the host also recognizes older `exit_plan_mode` tool events the same way.
@@ -122,13 +122,13 @@ When a `preToolUse` event fires for a tool that blocks on user input (currently 
 ### Permissions
 
 ```json
-{"event":"permissionRequest","state":"working","tool":"bash"}
+{"event":"permissionRequest","state":"working","tool":"bash","ttl_s":300,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 The `permissionRequest` hook fires for both interactive and auto-approved (yolo) permissions, so it always maps to `working`. When the user is actually blocked on a permission dialog, the Copilot CLI also emits a `notification` with `notification_type: "permission_prompt"`:
 
 ```json
-{"event":"notification","state":"awaiting_permission","notification_type":"permission_prompt","message":"Edit file: foo.py","ttl_s":600,"idle_mode":"breathing"}
+{"event":"notification","state":"awaiting_permission","notification_type":"permission_prompt","message":"Edit file: foo.py","ttl_s":600,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 In `--yolo` mode, no `permission_prompt` notification is emitted — the ring stays on the purple working spinner.
@@ -136,35 +136,35 @@ In `--yolo` mode, no `permission_prompt` notification is emitted — the ring st
 ### Sub-agents
 
 ```json
-{"event":"subagentStart","state":"subagent_active","agent":"reviewer"}
+{"event":"subagentStart","state":"subagent_active","agent":"reviewer","ttl_s":300,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 ```json
-{"event":"subagentStop","state":"idle","agent":"reviewer"}
+{"event":"subagentStop","state":"idle","agent":"reviewer","idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 ### Agent completion
 
 ```json
-{"event":"agentStop","state":"agent_idle","reason":"end_turn"}
+{"event":"agentStop","state":"agent_idle","reason":"end_turn","idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 ### Context compaction
 
 ```json
-{"event":"preCompact","state":"compacting"}
+{"event":"preCompact","state":"compacting","ttl_s":300,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 ### Errors
 
 ```json
-{"event":"errorOccurred","state":"error","error":"RateLimitError","message":"API rate limit exceeded","recoverable":true,"errorContext":"model_request"}
+{"event":"errorOccurred","state":"error","error":"RateLimitError","message":"API rate limit exceeded","recoverable":true,"errorContext":"model_request","ttl_s":60,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 ### Notifications
 
 ```json
-{"event":"notification","state":"notify","notification_type":"info","message":"Background task complete"}
+{"event":"notification","state":"notify","notification_type":"info","message":"Background task complete","idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 The host still sends the normalized `notify` message above. Busy-state suppression happens in firmware so idle sessions can still show the white notification flash.
@@ -172,7 +172,7 @@ The host still sends the normalized `notify` message above. Busy-state suppressi
 ### Elicitation dialog (user input required)
 
 ```json
-{"event":"notification","state":"awaiting_elicitation","notification_type":"elicitation_dialog","message":"Choose an option","ttl_s":600}
+{"event":"notification","state":"awaiting_elicitation","notification_type":"elicitation_dialog","message":"Choose an option","ttl_s":600,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 When the notification carries `notification_type: "elicitation_dialog"`, the host promotes the state to `awaiting_elicitation` — a persistent state with a 600 s TTL safety net.
@@ -206,6 +206,8 @@ When the notification carries `notification_type: "elicitation_dialog"`, the hos
 | `message` | string | Notification message |
 | `ttl_s` | integer | Per-state decay window in seconds. The firmware treats a session's persistent state as `agent_idle` if no refresh arrives within this many seconds. Transient states and `agent_idle` itself have no TTL. |
 | `idle_mode` | string | What the ring should do when all sessions are gone: `"breathing"` (default, dim breathing forever) or `"off"` (fully dark). Injected by the host on every message so the firmware always has a fresh value, including immediately after a reload. |
+| `brightness` | number | Runtime LED brightness scalar (`0.0`–`1.0`). Injected by the host on every message and applied by current firmware variants after receipt. |
+| `pixel_count` | integer | Runtime active LED count. Injected by the host on every message and applied by current firmware variants after receipt. |
 
 ---
 
@@ -233,4 +235,4 @@ This sends diagnostic output to **stderr only**.
 4. The host must exit quickly (target < 1 second total hook runtime).
 5. If no serial device is found, the hook exits silently — it must never block Copilot CLI.
 6. When the `session` field is present, firmware uses it for multi-session state arbitration. Messages without `session` are handled with legacy single-session behavior: the last persistent untagged state remains active until another persistent state replaces it, and untagged transient states flash on top of it once.
-7. `ttl_s` and `idle_mode` are optional and backward compatible — firmware that predates them simply ignores the extra keys.
+7. `ttl_s`, `idle_mode`, `brightness`, and `pixel_count` are optional and backward compatible — firmware that predates them simply ignores the extra keys.

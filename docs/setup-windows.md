@@ -115,7 +115,8 @@ Create `.copilot-command-ring.local.json` in your project root and add a `serial
 ```json
 {
   "serial_port": "COM7",
-  "brightness": 0.04
+  "brightness": 0.04,
+  "pixel_count": 24
 }
 ```
 
@@ -196,8 +197,8 @@ python -m copilot_command_ring.simulate --dry-run
 This sends a sequence of test events and prints the serial messages that *would* be sent. You should see JSON Lines like:
 
 ```
-{"event":"sessionStart","state":"session_start"}
-{"event":"preToolUse","state":"working","tool":"bash"}
+{"event":"sessionStart","state":"session_start","source":"new","ttl_s":60,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
+{"event":"preToolUse","state":"working","tool":"bash","ttl_s":300,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ...
 ```
 
@@ -231,6 +232,7 @@ If the ring doesn't respond, check:
 | `COPILOT_RING_PORT` | Serial port | `COM7` |
 | `COPILOT_RING_BAUD` | Baud rate (Arduino only) | `115200` |
 | `COPILOT_RING_BRIGHTNESS` | LED brightness (0.0–1.0) | `0.04` |
+| `COPILOT_RING_PIXEL_COUNT` | Active LED count | `24` |
 | `COPILOT_RING_LOG_LEVEL` | Log verbosity | `DEBUG` |
 | `COPILOT_RING_DRY_RUN` | Skip serial send | `1` |
 | `COPILOT_RING_LOCK_TIMEOUT` | Multi-session serial lock wait (seconds) | `1.0` |

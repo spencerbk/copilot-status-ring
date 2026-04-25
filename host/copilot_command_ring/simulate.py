@@ -11,7 +11,8 @@ import time
 from .config import Config, load_config
 from .events import normalize_event
 from .logging_util import get_logger
-from .sender import send_event
+from .protocol import serialize_message
+from .sender import prepare_message, send_event
 
 DEFAULT_SEQUENCE: list[tuple[str, dict[str, object]]] = [
     ("sessionStart", {"source": "new"}),
@@ -51,6 +52,10 @@ def run_sequence(
 
     for idx, (event_name, payload) in enumerate(sequence, start=1):
         message = normalize_event(event_name, payload)
+        if config.dry_run:
+            sys.stdout.write(
+                serialize_message(prepare_message(config, message)).decode("utf-8"),
+            )
         ok = send_event(config, message)
         status = "ok" if ok else "FAIL"
         print(

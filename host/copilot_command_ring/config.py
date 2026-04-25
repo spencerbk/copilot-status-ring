@@ -21,6 +21,7 @@ from .constants import (
     ENV_BRIGHTNESS,
     ENV_DRY_RUN,
     ENV_LOCK_TIMEOUT,
+    ENV_PIXEL_COUNT,
     ENV_PORT,
     VALID_IDLE_MODES,
 )
@@ -76,10 +77,33 @@ def _apply_file(cfg: Config, path: Path) -> None:
         cfg.serial_port = data["serial_port"]
     if "baud" in data and isinstance(data["baud"], int):
         cfg.baud = data["baud"]
-    if "pixel_count" in data and isinstance(data["pixel_count"], int):
-        cfg.pixel_count = data["pixel_count"]
-    if "brightness" in data and isinstance(data["brightness"], (int, float)):
-        cfg.brightness = float(data["brightness"])
+    if (
+        "pixel_count" in data
+        and isinstance(data["pixel_count"], int)
+        and not isinstance(data["pixel_count"], bool)
+    ):
+        if data["pixel_count"] > 0:
+            cfg.pixel_count = data["pixel_count"]
+        else:
+            log.debug(
+                "Invalid pixel_count value %r in %s; ignoring",
+                data["pixel_count"],
+                path,
+            )
+    if (
+        "brightness" in data
+        and isinstance(data["brightness"], (int, float))
+        and not isinstance(data["brightness"], bool)
+    ):
+        brightness = float(data["brightness"])
+        if 0.0 <= brightness <= 1.0:
+            cfg.brightness = brightness
+        else:
+            log.debug(
+                "Invalid brightness value %r in %s; ignoring",
+                data["brightness"],
+                path,
+            )
     if "idle_mode" in data and isinstance(data["idle_mode"], str):
         cfg.idle_mode = data["idle_mode"]
     if "lock_timeout" in data and isinstance(data["lock_timeout"], (int, float)):
@@ -120,11 +144,29 @@ def _apply_env(cfg: Config) -> None:
     brightness_str = os.environ.get(ENV_BRIGHTNESS)
     if brightness_str:
         try:
-            cfg.brightness = float(brightness_str)
+            brightness = float(brightness_str)
+            if not 0.0 <= brightness <= 1.0:
+                raise ValueError
+            cfg.brightness = brightness
             log.debug("ENV override %s=%s", ENV_BRIGHTNESS, cfg.brightness)
         except ValueError:
             log.debug(
                 "Invalid %s value %r; ignoring", ENV_BRIGHTNESS, brightness_str,
+            )
+
+    pixel_count_str = os.environ.get(ENV_PIXEL_COUNT)
+    if pixel_count_str:
+        try:
+            pixel_count = int(pixel_count_str)
+            if pixel_count <= 0:
+                raise ValueError
+            cfg.pixel_count = pixel_count
+            log.debug("ENV override %s=%d", ENV_PIXEL_COUNT, cfg.pixel_count)
+        except ValueError:
+            log.debug(
+                "Invalid %s value %r; ignoring",
+                ENV_PIXEL_COUNT,
+                pixel_count_str,
             )
 
     dry_run_str = os.environ.get(ENV_DRY_RUN, "")

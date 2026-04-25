@@ -15,6 +15,8 @@ the CircuitPython and MicroPython variants.
   error, notify) overlay the persistent state and revert automatically.
 - **Brightness boost**: Dim states (agent_idle) get extra brightness for
   visibility.
+- **Runtime display config**: Host-sent `brightness` and `pixel_count` update
+  the active NeoPixel settings after messages arrive.
 - **Startup animation**: Magenta wipe confirms the ring is alive on boot.
 - **Watchdog / error recovery**: Hardware watchdog on RP2040, serial silence
   timeout (10 min), and consecutive parse-error limit trigger a software reset.
@@ -49,6 +51,10 @@ Edit the `#define` values at the top of the sketch:
 | `MAX_SESSIONS` | `8` | Max concurrent sessions tracked |
 | `STALE_TIMEOUT_MS` | `300000` | Prune sessions after 5 min silence |
 | `SERIAL_SILENCE_MS` | `600000` | Reset after 10 min with no serial data |
+
+The host can override `BRIGHTNESS` and `PIXEL_COUNT` at runtime with
+`COPILOT_RING_BRIGHTNESS`, `COPILOT_RING_PIXEL_COUNT`, or the local JSON config.
+The startup wipe uses the sketch defaults until the first host message arrives.
 
 ## Board-specific notes
 

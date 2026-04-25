@@ -41,7 +41,7 @@ MicroPython firmware for the Copilot Command Ring.
 
 - `boot.py` — Sets up a second USB CDC endpoint for host communication (runs before main.py)
 - `ring_cdc.py` — Shared module for passing the CDC reference from boot.py to main.py
-- `main.py` — Main firmware with state machine, animations, and multi-session tracking
+- `main.py` — Main firmware with state machine, animations, multi-session tracking, and runtime `brightness`/`pixel_count` updates from host messages
 - `neopixel_compat.py` — Thin compatibility wrapper adding brightness control to MicroPython's built-in neopixel
 
 ## Pin Configuration
@@ -63,6 +63,7 @@ NEOPIXEL_PIN = 18  # example: use your board's GPIO number
 
 - Uses `micropython-lib`'s `usb-device-cdc` instead of built-in `usb_cdc`
 - Software brightness scaling (CircuitPython's neopixel has hardware brightness)
+- Runtime brightness and pixel-count config is applied after the first host message arrives; the startup wipe uses the firmware defaults
 - Pin auto-detection is limited to RP2040/RP2350 boards wired to GPIO 6; other boards require a manual `NEOPIXEL_PIN` override
 - Time tracking uses `time.ticks_ms()` with wraparound-safe `ticks_diff()` instead of `time.monotonic()`
 - Watchdog via `machine.WDT` (one-way, cannot be stopped once started)

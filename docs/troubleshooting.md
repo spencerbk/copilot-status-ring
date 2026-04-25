@@ -202,9 +202,9 @@ export COPILOT_RING_BRIGHTNESS=0.15
 
 ## Ring becomes unresponsive after long sessions
 
-If the ring appears stuck (frozen spinner, last-seen state lingering, or unresponsive to new events) during a long session, update to the latest `firmware/circuitpython/code.py`. Older firmware could go fully dark on `sessionEnd` and stay that way until power-cycle; current firmware instead breathes indefinitely and self-heals from wedged USB CDC.
+If the ring appears stuck (frozen spinner, last-seen state lingering, or unresponsive to new events) during a long session, update the firmware variant you flashed: CircuitPython, MicroPython, or Arduino. Older firmware could go fully dark on `sessionEnd` and stay that way until power-cycle; current firmware variants instead breathe indefinitely by default and self-heal from wedged serial channels.
 
-Recent firmware versions include several safeguards for long-running sessions:
+Recent firmware variants include several safeguards for long-running sessions:
 
 - `sessionEnd` and stale-session pruning fall back to a dim breathing animation instead of going dark. The ring only turns fully off when the host config sets `idle_mode` to `"off"`.
 - Per-state TTL decay: a crashed session stuck on `working` or `awaiting_permission` automatically decays to `agent_idle` after a few minutes, even if no further messages arrive.
@@ -220,15 +220,19 @@ Recent firmware versions include several safeguards for long-running sessions:
 
 **If you may be running older firmware:**
 
-1. Copy the latest `firmware/circuitpython/code.py` to the `CIRCUITPY` drive.
+1. Copy the latest firmware files for the runtime you use:
+   - **CircuitPython:** `firmware/circuitpython/boot.py` and `firmware/circuitpython/code.py`
+   - **MicroPython:** `firmware/micropython/boot.py`, `ring_cdc.py`, `neopixel_compat.py`, and `main.py`
+   - **Arduino:** upload the latest `firmware/arduino/copilot_command_ring` sketch
 2. Reset or power-cycle the board.
 3. Re-test with a normal Copilot CLI session.
 
 **If it still happens:**
 
-- Open the CircuitPython console port and look for a `MemoryError` traceback.
-- Check that `neopixel.mpy` matches your installed CircuitPython version.
-- If you changed the firmware, confirm there are no extra debug prints or large buffers added to `code.py`.
+- **CircuitPython:** Open the console port and look for a `MemoryError` traceback. Check that `neopixel.mpy` matches your installed CircuitPython version.
+- **MicroPython:** Connect with `mpremote`, press Ctrl+C, and run `import main` to surface startup errors.
+- **Arduino:** Open the serial monitor and reset the board to inspect startup output.
+- If you changed the firmware, confirm there are no extra debug prints or large buffers added to the firmware file.
 
 ---
 
@@ -283,7 +287,7 @@ LEDs are lighting up but the patterns are incorrect.
 
 **Check pixel count:**
 
-The firmware is configured for 24 pixels (NeoPixel Ring product 1586). If you're using a different ring size, update the `pixel_count` in your config or firmware.
+The default firmware is configured for 24 pixels (NeoPixel Ring product 1586). If you're using a different ring size, set `pixel_count` in `.copilot-command-ring.local.json` or `COPILOT_RING_PIXEL_COUNT`; current firmware applies it after the first host message. To change the startup wipe before any host message arrives, update the firmware/sketch default too.
 
 **Check data pin:**
 

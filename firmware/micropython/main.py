@@ -40,6 +40,7 @@ MAX_CONSECUTIVE_ERRORS = 10  # force reload after this many consecutive loop fai
 SERIAL_SILENCE_TIMEOUT_S = 600  # seconds of zero received bytes → reset when sessions active
 DEFAULT_IDLE_MODE = "breathing"  # used when no message has set one yet
 STALE_TIMEOUT_S = 300  # seconds before an idle session is pruned
+MAX_RUNTIME_PIXELS = 512  # guard against oversized host config on tiny boards
 
 # ── Time helpers (wraparound-safe) ─────────────────────────────────────────
 # MicroPython's ticks_ms() wraps at ~12.4 days. All timestamps are stored as
@@ -127,6 +128,39 @@ BOOSTED_STATES = {"agent_idle"}
 # Suppress white notification flashes while a clearly busy state is visible.
 NOTIFY_SUPPRESSED_WHILE_BUSY = {"working", "subagent_active", "compacting"}
 
+_runtime_brightness = BRIGHTNESS
+_runtime_pixel_count = NUM_PIXELS
+
+
+def _coerce_brightness(value):
+    """Return a valid brightness scalar or None when absent/invalid."""
+    if (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and 0.0 <= value <= 1.0
+    ):
+        return float(value)
+    return None
+
+
+def _coerce_pixel_count(value):
+    """Return a safe positive pixel count or None when absent/invalid."""
+    if (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and 0 < value <= MAX_RUNTIME_PIXELS
+    ):
+        return value
+    return None
+
+
+def _state_brightness(state):
+    """Return current base brightness plus any state-specific boost."""
+    brightness = _runtime_brightness
+    if state in BOOSTED_STATES:
+        brightness += BRIGHTNESS_BOOST
+    return min(brightness, 1.0)
+
 # ── Multi-session arbitration ──────────────────────────────────────────────
 STATE_PRIORITY = {
     "off": 0,
@@ -193,7 +227,7 @@ class StatusRing:
             self.state_start = self._saved_start
             self.step = self._saved_step
             if new_state in BOOSTED_STATES:
-                self.pixels.brightness = BRIGHTNESS + BRIGHTNESS_BOOST
+                self.pixels.brightness = _state_brightness(new_state)
             return
 
         # Entering a transient — save current timing only from a
@@ -209,10 +243,8 @@ class StatusRing:
         self.state_start = _now()
         self.step = 0
         # Boost brightness for dim states, restore for others
-        if new_state in BOOSTED_STATES:
-            self.pixels.brightness = BRIGHTNESS + BRIGHTNESS_BOOST
-        elif self.prev_state in BOOSTED_STATES:
-            self.pixels.brightness = BRIGHTNESS
+        if new_state in BOOSTED_STATES or self.prev_state in BOOSTED_STATES:
+            self.pixels.brightness = _state_brightness(new_state)
 
     # ── tick dispatcher ────────────────────────────────────────────────
 
@@ -272,8 +304,7 @@ class StatusRing:
         else:
             self.state_start = _now()
             self.step = 0
-        if target in BOOSTED_STATES:
-            self.pixels.brightness = BRIGHTNESS + BRIGHTNESS_BOOST
+        self.pixels.brightness = _state_brightness(target)
 
     # ── animation implementations ──────────────────────────────────────
 
@@ -476,6 +507,31 @@ def _log_exception(context, exc):
     print(context, type(exc).__name__, exc)
 
 
+def apply_runtime_config(msg):
+    """Apply optional display configuration carried by host messages."""
+    global pixels, _runtime_brightness, _runtime_pixel_count  # noqa: PLW0603
+
+    brightness = _coerce_brightness(msg.get("brightness"))
+    if brightness is not None and brightness != _runtime_brightness:
+        _runtime_brightness = brightness
+        pixels.brightness = _state_brightness(ring.state)
+
+    pixel_count = _coerce_pixel_count(msg.get("pixel_count"))
+    if pixel_count is None or pixel_count == _runtime_pixel_count:
+        return
+
+    try:
+        pixels.fill(COLOR_OFF)
+        pixels.show()
+        pixels = NeoPixelCompat(_pin_num, pixel_count, brightness=_state_brightness(ring.state))
+        _runtime_pixel_count = pixel_count
+        ring.pixels = pixels
+        ring.num_pixels = pixel_count
+        ring.step = 0
+    except Exception as exc:
+        _log_exception("config apply error", exc)
+
+
 def read_serial(tracker):
     """Read available bytes and process messages through the session tracker.
 
@@ -520,6 +576,7 @@ def read_serial(tracker):
             line = line_bytes.decode("utf-8").strip()
             if line:
                 msg = json.loads(line)
+                apply_runtime_config(msg)
                 state = msg.get("state", "off")
                 session_id = msg.get("session")
                 ttl_s = msg.get("ttl_s")

@@ -296,6 +296,8 @@ static unsigned long stateStartMs    = 0;
 static int           animStep        = 0;
 static unsigned long savedStartMs    = 0;
 static int           savedStep       = 0;
+static uint16_t      runtimePixelCount = PIXEL_COUNT;
+static uint8_t       runtimeBrightness = BRIGHTNESS;
 
 // Serial state
 static char    serialBuf[SERIAL_BUF_SIZE];
@@ -332,6 +334,12 @@ static uint32_t scaleColor(uint32_t color, float factor) {
   return Adafruit_NeoPixel::Color(r, g, b);
 }
 
+static uint8_t stateBrightness(State s) {
+  uint16_t value = runtimeBrightness;
+  if (isBoosted(s)) value += BRIGHTNESS_BOOST;
+  return value > 255 ? 255 : (uint8_t)value;
+}
+
 // ---------------------------------------------------------------------------
 // State management
 // ---------------------------------------------------------------------------
@@ -350,7 +358,7 @@ static void setState(State s) {
     stateStartMs = savedStartMs;
     animStep     = savedStep;
     if (isBoosted(s))
-      ring.setBrightness(BRIGHTNESS + BRIGHTNESS_BOOST);
+      ring.setBrightness(stateBrightness(s));
     return;
   }
 
@@ -367,11 +375,8 @@ static void setState(State s) {
   animStep     = 0;
 
   // Brightness boost for dim states (only on transitions)
-  if (isBoosted(s)) {
-    ring.setBrightness(BRIGHTNESS + BRIGHTNESS_BOOST);
-  } else if (isBoosted(prevState)) {
-    ring.setBrightness(BRIGHTNESS);
-  }
+  if (isBoosted(s) || isBoosted(prevState))
+    ring.setBrightness(stateBrightness(s));
 }
 
 static State stateFromStr(const char* s) {
@@ -406,6 +411,8 @@ static ParsedMessage parseLine(const char* line) {
   msg.session[0] = '\0';
   msg.hasTtl     = false;
   msg.idleMode   = IDLE_UNSET;
+  msg.hasBrightness = false;
+  msg.hasPixelCount = false;
   msg.valid      = false;
 
   JsonDocument doc;
@@ -425,6 +432,22 @@ static ParsedMessage parseLine(const char* line) {
     if (ttl > 0) {
       msg.ttlMs  = (uint32_t)(ttl * 1000.0f);
       msg.hasTtl = true;
+    }
+  }
+
+  if (doc["brightness"].is<float>()) {
+    float brightness = doc["brightness"];
+    if (brightness >= 0.0f && brightness <= 1.0f) {
+      msg.brightness = (uint8_t)(brightness * 255.0f + 0.5f);
+      msg.hasBrightness = true;
+    }
+  }
+
+  if (doc["pixel_count"].is<int>()) {
+    int pixelCount = doc["pixel_count"];
+    if (pixelCount > 0 && pixelCount <= MAX_RUNTIME_PIXELS) {
+      msg.pixelCount = (uint16_t)pixelCount;
+      msg.hasPixelCount = true;
     }
   }
 
@@ -485,6 +508,8 @@ static ParsedMessage parseLine(const char* line) {
   msg.session[0] = '\0';
   msg.hasTtl     = false;
   msg.idleMode   = IDLE_UNSET;
+  msg.hasBrightness = false;
+  msg.hasPixelCount = false;
   msg.valid      = false;
 
   char val[40];
@@ -500,6 +525,23 @@ static ParsedMessage parseLine(const char* line) {
   if (extractNum(line, "\"ttl_s\"", 7, &ttl) && ttl > 0) {
     msg.ttlMs  = (uint32_t)(ttl * 1000.0f);
     msg.hasTtl = true;
+  }
+
+  float brightness;
+  if (extractNum(line, "\"brightness\"", 12, &brightness)
+      && brightness >= 0.0f && brightness <= 1.0f) {
+    msg.brightness = (uint8_t)(brightness * 255.0f + 0.5f);
+    msg.hasBrightness = true;
+  }
+
+  float pixelCount;
+  if (extractNum(line, "\"pixel_count\"", 13, &pixelCount)
+      && pixelCount >= 1.0f && pixelCount <= (float)MAX_RUNTIME_PIXELS) {
+    uint16_t pixelCountInt = (uint16_t)pixelCount;
+    if (pixelCount == (float)pixelCountInt) {
+      msg.pixelCount = pixelCountInt;
+      msg.hasPixelCount = true;
+    }
   }
 
   char im[16];
@@ -518,7 +560,25 @@ static ParsedMessage parseLine(const char* line) {
 // Serial reading
 // ---------------------------------------------------------------------------
 
+static void applyRuntimeConfig(const ParsedMessage& msg) {
+  if (msg.hasBrightness) {
+    runtimeBrightness = msg.brightness;
+    ring.setBrightness(stateBrightness(currentState));
+  }
+
+  if (msg.hasPixelCount && msg.pixelCount != runtimePixelCount) {
+    ring.clear();
+    ring.show();
+    ring.updateLength(msg.pixelCount);
+    runtimePixelCount = msg.pixelCount;
+    ring.setBrightness(stateBrightness(currentState));
+    animStep = 0;
+  }
+}
+
 static void processMessage(const ParsedMessage& msg, uint32_t now) {
+  applyRuntimeConfig(msg);
+
   if (msg.session[0] != '\0') {
     rsHasSession = true;
     trackerUpdate(msg, now);
@@ -593,9 +653,9 @@ static void animOff() {
 
 static void animWipe(uint32_t color, unsigned long duration) {
   unsigned long elapsed = millis() - stateStartMs;
-  int lit = (int)((elapsed * PIXEL_COUNT) / duration);
-  if (lit > PIXEL_COUNT) lit = PIXEL_COUNT;
-  for (int i = 0; i < PIXEL_COUNT; i++)
+  int lit = (int)((elapsed * runtimePixelCount) / duration);
+  if (lit > runtimePixelCount) lit = runtimePixelCount;
+  for (uint16_t i = 0; i < runtimePixelCount; i++)
     ring.setPixelColor(i, (i < lit) ? color : 0);
   ring.show();
 }
@@ -606,10 +666,10 @@ static void animWipe(uint32_t color, unsigned long duration) {
 
 static void animSpinner(uint32_t color, int width, unsigned long period) {
   unsigned long elapsed = millis() - stateStartMs;
-  int head = (int)((elapsed % period) * PIXEL_COUNT / period);
+  int head = (int)((elapsed % period) * runtimePixelCount / period);
   ring.clear();
-  for (int i = 0; i < PIXEL_COUNT; i++) {
-    int dist = (head - i + PIXEL_COUNT) % PIXEL_COUNT;
+  for (uint16_t i = 0; i < runtimePixelCount; i++) {
+    int dist = (head - i + runtimePixelCount) % runtimePixelCount;
     if (dist < width)
       ring.setPixelColor(i, color);
   }
@@ -623,7 +683,7 @@ static void animSpinner(uint32_t color, int width, unsigned long period) {
 static void animFlash(uint32_t color, unsigned long duration) {
   unsigned long elapsed = millis() - stateStartMs;
   if (elapsed < duration) {
-    for (int i = 0; i < PIXEL_COUNT; i++) ring.setPixelColor(i, color);
+    for (uint16_t i = 0; i < runtimePixelCount; i++) ring.setPixelColor(i, color);
   } else {
     ring.clear();
   }
@@ -637,7 +697,7 @@ static void animFlash(uint32_t color, unsigned long duration) {
 static void animBlink(uint32_t color, unsigned long period) {
   unsigned long elapsed = millis() - stateStartMs;
   bool on = ((elapsed % period) < (period / 2));
-  for (int i = 0; i < PIXEL_COUNT; i++)
+  for (uint16_t i = 0; i < runtimePixelCount; i++)
     ring.setPixelColor(i, on ? color : 0);
   ring.show();
 }
@@ -650,7 +710,7 @@ static void animChase(uint32_t color, int spacing, unsigned long period) {
   unsigned long elapsed = millis() - stateStartMs;
   int offset = (int)((elapsed % period) * spacing / period);
   ring.clear();
-  for (int i = 0; i < PIXEL_COUNT; i++) {
+  for (uint16_t i = 0; i < runtimePixelCount; i++) {
     if ((i + offset) % spacing == 0)
       ring.setPixelColor(i, color);
   }
@@ -665,7 +725,7 @@ static void animBreathing(uint32_t color, unsigned long period) {
   unsigned long elapsed = millis() - stateStartMs;
   float bright = sineBrightness(elapsed, period);
   uint32_t scaled = scaleColor(color, bright);
-  for (int i = 0; i < PIXEL_COUNT; i++) ring.setPixelColor(i, scaled);
+  for (uint16_t i = 0; i < runtimePixelCount; i++) ring.setPixelColor(i, scaled);
   ring.show();
 }
 
@@ -678,7 +738,7 @@ static void animPulse(uint32_t color, unsigned long period) {
   float bright = sineBrightness(elapsed, period);
   bright = 0.15f + bright * 0.85f;
   uint32_t scaled = scaleColor(color, bright);
-  for (int i = 0; i < PIXEL_COUNT; i++) ring.setPixelColor(i, scaled);
+  for (uint16_t i = 0; i < runtimePixelCount; i++) ring.setPixelColor(i, scaled);
   ring.show();
 }
 
@@ -744,10 +804,10 @@ static void animate() {
 void setup() {
   Serial.begin(SERIAL_BAUD);
   ring.begin();
-  ring.setBrightness(BRIGHTNESS);
+  ring.setBrightness(runtimeBrightness);
 
   // Startup animation — magenta wipe to confirm the ring is alive
-  for (int i = 0; i < PIXEL_COUNT; i++) {
+  for (uint16_t i = 0; i < runtimePixelCount; i++) {
     ring.setPixelColor(i, COL_WORKING);
     ring.show();
     delay(20);

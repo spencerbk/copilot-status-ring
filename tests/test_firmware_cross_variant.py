@@ -257,6 +257,32 @@ class TestTransientPolicyConsistency:
             )
 
 
+class TestRuntimeDisplayConfigParity:
+    """All firmware variants must accept host-sent display config fields."""
+
+    def test_circuitpython_supports_runtime_display_config(self) -> None:
+        src = CP_CODE.read_text(encoding="utf-8")
+        assert "apply_runtime_config" in src
+        assert '"brightness"' in src
+        assert '"pixel_count"' in src
+        assert "MAX_RUNTIME_PIXELS" in src
+
+    def test_micropython_supports_runtime_display_config(self) -> None:
+        src = MP_CODE.read_text(encoding="utf-8")
+        assert "apply_runtime_config" in src
+        assert '"brightness"' in src
+        assert '"pixel_count"' in src
+        assert "MAX_RUNTIME_PIXELS" in src
+
+    def test_arduino_supports_runtime_display_config(self) -> None:
+        src = _read_arduino_sources()
+        assert "applyRuntimeConfig" in src
+        assert "hasBrightness" in src
+        assert "hasPixelCount" in src
+        assert "updateLength" in src
+        assert "MAX_RUNTIME_PIXELS" in src
+
+
 # ── Arduino feature parity ────────────────────────────────────────────────
 
 

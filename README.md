@@ -165,9 +165,10 @@ Configuration is resolved in this order: **environment variable > config file > 
 |----------|---------|-------------|
 | `COPILOT_RING_PORT` | *(auto-detect)* | Serial port (e.g., `COM7`, `/dev/ttyACM0`) |
 | `COPILOT_RING_BAUD` | `115200` | Baud rate |
-| `COPILOT_RING_BRIGHTNESS` | `0.04` | LED brightness (`0.0`–`1.0`) |
+| `COPILOT_RING_BRIGHTNESS` | `0.04` | Runtime LED brightness (`0.0`–`1.0`) |
+| `COPILOT_RING_PIXEL_COUNT` | `24` | Runtime active LED count |
 | `COPILOT_RING_LOG_LEVEL` | `WARNING` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
-| `COPILOT_RING_DRY_RUN` | `false` | If `true`, log messages to stderr instead of sending to serial |
+| `COPILOT_RING_DRY_RUN` | `false` | If `true`, skip serial sends; the simulator prints JSON Lines |
 | `COPILOT_RING_LOCK_TIMEOUT` | `1.0` | Seconds to wait for the multi-session serial lock before skipping the send |
 
 ### Config File
@@ -178,6 +179,7 @@ Create `.copilot-command-ring.local.json` in the repo root (git-ignored):
 {
   "baud": 115200,
   "brightness": 0.04,
+  "pixel_count": 24,
   "lock_timeout": 1.0,
   "idle_mode": "breathing",
   "device_match": {
@@ -196,6 +198,8 @@ The serial port is auto-detected by default. Add `"serial_port": "COM7"` only if
 | `off` | Ring goes fully dark on `sessionEnd` or stale prune. Matches the pre-v1.2 behavior. |
 
 Unknown values are logged and normalized back to `breathing`.
+
+`brightness` and `pixel_count` are included in every host → firmware message. Current firmware variants apply them at runtime after the first host message arrives; the startup wipe still uses the firmware/sketch defaults until then.
 
 ## Hook Event Mapping
 

@@ -16,6 +16,7 @@
 
 #define NEOPIXEL_PIN      6
 #define PIXEL_COUNT       24
+#define MAX_RUNTIME_PIXELS 512      // guard against oversized host config
 #define BRIGHTNESS        10        // 0-255, ~4%
 #define BRIGHTNESS_BOOST  5         // extra for dim states (agent_idle breathing)
 #define SERIAL_BAUD       115200
@@ -71,6 +72,10 @@ struct ParsedMessage {
   uint32_t ttlMs;
   bool     hasTtl;
   IdleMode idleMode;
+  uint8_t  brightness;
+  bool     hasBrightness;
+  uint16_t pixelCount;
+  bool     hasPixelCount;
   bool     valid;
 };
 
