@@ -2,7 +2,7 @@
 
 **A physical NeoPixel status ring for GitHub Copilot CLI.**
 
-Copilot Command Ring turns an [Adafruit NeoPixel Ring (24 RGB LEDs)](https://www.adafruit.com/product/1586) into a real-time activity indicator for the Copilot CLI agent. Using native Copilot CLI hooks, it lights up when the agent is thinking, flashes on tool success or failure, blinks while waiting for permission, and fades to black when the session ends — no terminal scraping required.
+Copilot Command Ring turns an [Adafruit NeoPixel Ring (24 RGB LEDs)](https://www.adafruit.com/product/1586) into a real-time activity indicator for the Copilot CLI agent. Using native Copilot CLI hooks, it lights up when the agent is thinking, flashes on tool success or failure, blinks while waiting for permission, and settles into an idle breathing animation when the session ends — no terminal scraping required.
 
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![CircuitPython](https://img.shields.io/badge/firmware-CircuitPython-blueviolet)
@@ -12,6 +12,7 @@ Copilot Command Ring turns an [Adafruit NeoPixel Ring (24 RGB LEDs)](https://www
 ## Contents
 
 - [Quick Start](#quick-start)
+- [Documentation Map](#documentation-map)
 - [How It Works](#how-it-works)
 - [Hardware](#hardware)
 - [Supported Platforms](#supported-platforms)
@@ -29,6 +30,17 @@ Copilot Command Ring turns an [Adafruit NeoPixel Ring (24 RGB LEDs)](https://www
 - **GitHub Copilot CLI** — Install by following the [Installing GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) guide. Verify it's working by running `copilot` in your terminal.
 - **Python 3.9+** — Required for the host bridge. See the platform setup guides ([Windows](docs/setup-windows.md) · [macOS](docs/setup-macos.md) · [Linux](docs/setup-linux.md)) for OS-specific instructions.
 - **A USB microcontroller + NeoPixel Ring** — See [Hardware](#hardware) below for the parts list, or [`docs/hardware.md`](docs/hardware.md) for wiring diagrams.
+
+### Recommended first build
+
+For the shortest path to a working ring:
+
+| Area | Recommended choice | Why |
+|------|--------------------|-----|
+| Firmware | **CircuitPython** | Broadest board auto-detection and easiest drag-and-drop setup |
+| Hooks | **Global setup** with `copilot-command-ring setup` | One install works in every repo |
+| Hardware | 24-pixel NeoPixel ring powered from the board's USB 5V pin | Matches the project defaults and stays low-current at default brightness |
+| Config | Start with auto-detect; set `COPILOT_RING_PORT` only if needed | Most boards are found automatically |
 
 ### 1. Install the host bridge
 
@@ -114,6 +126,17 @@ This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run
 > **Note:** If you recreate the virtual environment or install on a new machine, re-run `setup --force` or `deploy <path> --force` to update the recorded Python path.
 >
 > **Tip:** The hooks auto-detect your board by USB serial description. If auto-detect picks the wrong port or finds nothing, set `COPILOT_RING_PORT` explicitly.
+
+## Documentation Map
+
+| If you need to... | Go to |
+|-------------------|-------|
+| Wire the ring or choose a board | [`docs/hardware.md`](docs/hardware.md) |
+| Set up a specific OS | [Windows](docs/setup-windows.md) · [macOS](docs/setup-macos.md) · [Linux](docs/setup-linux.md) |
+| Understand hook events and serial messages | [`docs/hook-events.md`](docs/hook-events.md) |
+| Diagnose setup, serial, firmware, or multi-session issues | [`docs/troubleshooting.md`](docs/troubleshooting.md) |
+| Flash a specific firmware runtime | [CircuitPython](firmware/circuitpython/README.md) · [MicroPython](firmware/micropython/README.md) · [Arduino](firmware/arduino/README.md) |
+| See planned work and non-goals | [`ROADMAP.md`](ROADMAP.md) |
 
 ## How It Works
 

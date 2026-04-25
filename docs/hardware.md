@@ -5,6 +5,7 @@ This guide covers wiring, parts, and power for the Copilot Command Ring.
 ## Contents
 
 - [Parts list](#parts-list)
+- [Recommended first build](#recommended-first-build)
 - [Wiring diagram](#wiring-diagram)
 - [Recommended boards](#recommended-boards)
 - [Wire gauge](#wire-gauge)
@@ -25,6 +26,23 @@ This guide covers wiring, parts, and power for the Copilot Command Ring.
 | **74AHCT125 level shifter** *(optional)* | Shifts 3.3V data to 5V logic | Recommended for reliable signaling; see [Level shifting](#level-shifting) |
 | **USB data cable** | Must be a **data** cable, not charge-only | Used for serial communication with the host |
 | **Hookup wire / jumpers** | For connections between MCU, ring, and power | 22–24 AWG; breadboard jumpers or Dupont wires work for prototyping |
+
+---
+
+## Recommended first build
+
+For a reliable first setup, use the project defaults:
+
+| Choice | Recommendation |
+|--------|----------------|
+| LED device | Adafruit NeoPixel Ring 24 |
+| Firmware | CircuitPython |
+| Power | Board USB 5V/VBUS to ring 5V |
+| Data | Board-specific data pin (`D6`/`GP6` on Pico/Feather-style boards) to ring `DIN` through a 330 Ω resistor |
+| Ground | Board GND to ring GND |
+| Protection | 1000 µF capacitor across ring 5V/GND |
+
+This works well at the default low brightness. Add a 74AHCT125 level shifter if the data wire is longer than about 15 cm, the ring flickers, or the build is permanent.
 
 ---
 

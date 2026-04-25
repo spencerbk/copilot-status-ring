@@ -280,12 +280,12 @@ export COPILOT_RING_LOG_LEVEL=DEBUG
 
 ## Environment variables reference
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `COPILOT_RING_PORT` | Serial port | `/dev/ttyACM1` |
-| `COPILOT_RING_BAUD` | Baud rate (Arduino only) | `115200` |
-| `COPILOT_RING_BRIGHTNESS` | LED brightness (0.0–1.0) | `0.04` |
-| `COPILOT_RING_PIXEL_COUNT` | Active LED count | `24` |
-| `COPILOT_RING_LOG_LEVEL` | Log verbosity | `DEBUG` |
-| `COPILOT_RING_DRY_RUN` | Skip serial send | `1` |
-| `COPILOT_RING_LOCK_TIMEOUT` | Multi-session serial lock wait (seconds) | `1.0` |
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `COPILOT_RING_PORT` | Auto-detect | Set to `/dev/ttyACM1` or another device path if auto-detect selects the wrong device |
+| `COPILOT_RING_BAUD` | `115200` | Serial baud rate; CircuitPython's USB CDC data channel is speed-independent |
+| `COPILOT_RING_BRIGHTNESS` | `0.04` | LED brightness from `0.0` to `1.0` |
+| `COPILOT_RING_PIXEL_COUNT` | `24` | Active LED count |
+| `COPILOT_RING_LOG_LEVEL` | `WARNING` | Use `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
+| `COPILOT_RING_DRY_RUN` | `false` | Set to `1`, `true`, or `yes` to skip serial sends |
+| `COPILOT_RING_LOCK_TIMEOUT` | `1.0` | Seconds to wait for the multi-session serial lock |

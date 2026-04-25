@@ -4,6 +4,7 @@ Common issues and solutions for the Copilot Command Ring.
 
 ## Contents
 
+- [Start with these checks](#start-with-these-checks)
 - ["No serial port detected"](#no-serial-port-detected)
 - ["pyserial not installed"](#pyserial-not-installed)
 - [Hooks not firing](#hooks-not-firing)
@@ -17,6 +18,17 @@ Common issues and solutions for the Copilot Command Ring.
 - [Multiple serial devices detected](#multiple-serial-devices-detected)
 - [Multiple Copilot CLI sessions](#multiple-copilot-cli-sessions)
 - [Still stuck?](#still-stuck)
+
+---
+
+## Start with these checks
+
+Most setup issues fall into one of four layers. Check them in this order:
+
+1. **Hooks installed:** Run `copilot-command-ring setup` for global hooks, or `copilot-command-ring deploy <path>` for one repo.
+2. **Host can send:** Run `python -m copilot_command_ring.simulate --dry-run` and confirm JSON Lines are printed.
+3. **Serial port visible:** Check Device Manager, `/dev/cu.*`, or `/dev/ttyACM*` and set `COPILOT_RING_PORT` if auto-detect picks the wrong device.
+4. **Firmware running:** Reset the board and confirm the startup wipe appears before testing Copilot CLI hooks.
 
 ---
 
@@ -416,7 +428,7 @@ If you run Copilot CLI in multiple terminals (or across different repos) on the 
 
 **How it works:**
 
-The host bridge tags every serial message with a session identifier (the Copilot CLI process PID). The CircuitPython firmware maintains a lightweight session table and resolves the **highest-priority** state across all active sessions. A system-wide file lock ensures concurrent hook processes never corrupt each other's serial writes.
+The host bridge tags every serial message with a session identifier. Current Copilot CLI payloads provide a stable `sessionId`, which the host prefers; hook wrappers fall back to a parent-process-derived ID for older or empty payloads. All firmware variants maintain a lightweight session table and resolve the **highest-priority** state across active sessions. A system-wide file lock ensures concurrent hook processes never corrupt each other's serial writes.
 
 **Priority order** (highest → lowest):
 
