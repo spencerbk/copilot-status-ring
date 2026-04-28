@@ -35,6 +35,7 @@ BRIGHTNESS_BOOST = 0.02  # extra brightness for dim states (breathing)
 SPINNER_WIDTH = 6  # number of LEDs in the spinner segment
 LOOP_DELAY_MS = 20  # ~50 fps
 SERIAL_BUF_MAX = 512  # discard buffer if no newline within this many bytes
+SERIAL_READ_CHUNK = 256  # max bytes to drain per loop without blocking animation
 WATCHDOG_TIMEOUT_MS = 8000  # keep longer than normal render loop latency
 MAX_CONSECUTIVE_ERRORS = 10  # force reload after this many consecutive loop failures
 SERIAL_SILENCE_TIMEOUT_S = 600  # seconds of zero received bytes → reset when sessions active
@@ -507,6 +508,57 @@ def _log_exception(context, exc):
     print(context, type(exc).__name__, exc)
 
 
+def _serial_available_count(stream):
+    """Return known readable byte count, or None when only poll is available."""
+    in_waiting = getattr(stream, "in_waiting", None)
+    if callable(in_waiting):
+        in_waiting = in_waiting()
+    if isinstance(in_waiting, int):
+        return max(0, in_waiting)
+
+    any_method = getattr(stream, "any", None)
+    if any_method is not None:
+        available = any_method()
+        if isinstance(available, int):
+            return max(0, available)
+    return None
+
+
+def _extend_serial_buffer(raw):
+    """Append bytes from a MicroPython stream read result."""
+    if isinstance(raw, str):
+        raw = raw.encode("utf-8")
+    _serial_buf.extend(raw)
+
+
+def _read_available_serial_bytes(stream):
+    """Drain ready serial data without waiting for a full read chunk."""
+    remaining = SERIAL_READ_CHUNK
+    if not _poller.poll(0):
+        return
+
+    while remaining > 0:
+        available = _serial_available_count(stream)
+        if available is None:
+            read_size = 1
+        elif available == 0:
+            break
+        else:
+            read_size = min(available, remaining)
+
+        raw = stream.read(read_size)
+        if not raw:
+            break
+
+        _extend_serial_buffer(raw)
+        remaining -= len(raw)
+
+        if available is None and not _poller.poll(0):
+            break
+        if available is not None and len(raw) < read_size:
+            break
+
+
 def apply_runtime_config(msg):
     """Apply optional display configuration carried by host messages."""
     global pixels, _runtime_brightness, _runtime_pixel_count  # noqa: PLW0603
@@ -542,13 +594,8 @@ def read_serial(tracker):
     if _serial is None:
         return False, None, False
 
-    # Non-blocking read via poll
     try:
-        events = _poller.poll(0)
-        if events:
-            raw = _serial.read(256)
-            if raw:
-                _serial_buf.extend(raw)  # type: ignore[arg-type]
+        _read_available_serial_bytes(_serial)
     except Exception as exc:
         _log_exception("serial read error", exc)
         return False, None, False

@@ -271,6 +271,10 @@ ESP32-C3 and ESP32-C6 boards lack native USB device hardware and cannot create a
 - The firmware's JSON parser discards malformed lines, so brief visual glitches are the worst case.
 - Avoid interacting with the REPL (Ctrl+C, typing commands) while the ring is running.
 
+**Spinner pauses, then jumps ahead:**
+
+Use the current `firmware/micropython/main.py` and `firmware/micropython/neopixel_compat.py` files. The MicroPython firmware keeps serial reads bounded and avoids per-frame brightness rescaling so elapsed-time animations do not visibly catch up after a loop stall. If the issue persists on ESP32-C3/C6 degraded mode, avoid REPL interaction while the ring is running or use a board with a dedicated CDC data channel.
+
 **`mpremote` can't connect:**
 
 - Ensure no other program (serial monitor, PuTTY) has the port open.
