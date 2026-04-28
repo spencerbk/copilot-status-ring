@@ -89,9 +89,10 @@ See [`firmware/circuitpython/README.md`](firmware/circuitpython/README.md) for p
 **MicroPython:**
 
 1. Flash [MicroPython 1.24+](https://micropython.org/download/) onto your board.
-2. Install the USB CDC library: `mpremote mip install usb-device-cdc`
-3. Copy `firmware/micropython/boot.py`, `ring_cdc.py`, `main.py`, and `neopixel_compat.py` to the board using `mpremote`.
-4. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), set `NEOPIXEL_PIN` in `main.py` before resetting.
+2. Install `mpremote` if it is not already available: `pip install mpremote`
+3. Install the USB CDC library: `mpremote mip install usb-device-cdc`
+4. Copy `firmware/micropython/boot.py`, `ring_cdc.py`, `main.py`, and `neopixel_compat.py` to the board using `mpremote`.
+5. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), set `NEOPIXEL_PIN` in `main.py` before resetting.
 
 See [`firmware/micropython/README.md`](firmware/micropython/README.md) for board support matrix and pin configuration.
 
@@ -193,6 +194,7 @@ Configuration is resolved in this order: **environment variable > config file > 
 | `COPILOT_RING_LOG_LEVEL` | `WARNING` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `COPILOT_RING_DRY_RUN` | `false` | If `true`, skip serial sends; the simulator prints JSON Lines |
 | `COPILOT_RING_LOCK_TIMEOUT` | `1.0` | Seconds to wait for the multi-session serial lock before skipping the send |
+| `COPILOT_HOME` | `~/.copilot` | Optional Copilot CLI home override; `setup` installs global hooks to `$COPILOT_HOME/hooks` |
 
 ### Config File
 

@@ -6,6 +6,7 @@ MicroPython firmware for the Copilot Command Ring.
 
 - MicroPython 1.24 or later (required for USB CDC device support)
 - `neopixel` built-in module (included in standard MicroPython firmware)
+- `mpremote` on your host computer (`pip install mpremote`)
 - `usb-device-cdc` package from micropython-lib (for dedicated serial channel on native-USB boards)
 
 ## Board Support
@@ -23,19 +24,23 @@ MicroPython firmware for the Copilot Command Ring.
 ## Setup
 
 1. Flash MicroPython firmware onto your board from [micropython.org/download](https://micropython.org/download/).
-2. Install the USB CDC package:
+2. Install `mpremote` if it is not already available:
+   ```
+   pip install mpremote
+   ```
+3. Install the USB CDC package:
    ```
    mpremote mip install usb-device-cdc
    ```
-3. Copy files to the board:
+4. Copy files to the board:
    ```
    mpremote cp boot.py :boot.py
    mpremote cp ring_cdc.py :ring_cdc.py
    mpremote cp main.py :main.py
    mpremote cp neopixel_compat.py :neopixel_compat.py
    ```
-4. If your board does not wire the ring to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), edit `NEOPIXEL_PIN` in `main.py` before resetting.
-5. Reset the board (unplug and replug USB, or `mpremote reset`)
+5. If your board does not wire the ring to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), edit `NEOPIXEL_PIN` in `main.py` before resetting.
+6. Reset the board (unplug and replug USB, or `mpremote reset`)
 
 ## Files
 
