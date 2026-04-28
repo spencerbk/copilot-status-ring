@@ -1,5 +1,7 @@
 # Roadmap
 
+This roadmap separates the completed core product from optional future improvements. The current recommended setup is the v1 feature set; later sections describe planned or deliberately deferred work.
+
 ## v1 — Core Implementation ✅
 
 All v1 deliverables are complete.

@@ -82,7 +82,7 @@ def main() -> None:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Log messages instead of sending over serial",
+        help="Print JSON Lines without sending over serial",
     )
     args = parser.parse_args()
 

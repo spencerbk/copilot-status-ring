@@ -4,6 +4,7 @@ Step-by-step guide to set up the Copilot Command Ring on Linux.
 
 ## Contents
 
+- [Recommended path](#recommended-path)
 - [0. Install GitHub Copilot CLI](#0-install-github-copilot-cli)
 - [1. Install Python 3](#1-install-python-3)
 - [2. Install the host bridge](#2-install-the-host-bridge)
@@ -16,6 +17,21 @@ Step-by-step guide to set up the Copilot Command Ring on Linux.
 - [8. Test with simulation](#8-test-with-simulation)
 - [9. Verify hooks](#9-verify-hooks)
 - [Environment variables reference](#environment-variables-reference)
+
+---
+
+## Recommended path
+
+For a first build, follow the default path before customizing anything:
+
+1. Install GitHub Copilot CLI and Python 3.
+2. Install the host bridge in a virtual environment.
+3. Add your user to the serial-device group (`dialout` on most distributions).
+4. Flash the **CircuitPython** firmware and copy `boot.py`, `code.py`, and `neopixel.mpy`.
+5. Run `copilot-command-ring setup` for global hooks.
+6. Start a Copilot CLI session and confirm the ring lights up.
+
+Set `COPILOT_RING_PORT` only if auto-detection does not find the board or selects the wrong `/dev/tty*` device.
 
 ---
 
@@ -201,18 +217,22 @@ Use MicroPython instead of CircuitPython if you prefer the MicroPython ecosystem
    ```bash
    cp micropython-*.uf2 /media/$USER/RPI-RP2/
    ```
-4. The board reboots. Install the USB CDC library:
+4. The board reboots. Install `mpremote` if it is not already available:
+   ```bash
+   pip install mpremote
+   ```
+5. Install the USB CDC library:
    ```bash
    mpremote mip install usb-device-cdc
    ```
-5. Copy the firmware files:
+6. Copy the firmware files:
    ```bash
    mpremote cp firmware/micropython/boot.py :boot.py
    mpremote cp firmware/micropython/ring_cdc.py :ring_cdc.py
    mpremote cp firmware/micropython/neopixel_compat.py :neopixel_compat.py
    mpremote cp firmware/micropython/main.py :main.py
    ```
-6. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), edit `main.py` and set `NEOPIXEL_PIN` to the correct GPIO number before resetting. Then reset the board.
+7. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), edit `main.py` and set `NEOPIXEL_PIN` to the correct GPIO number before resetting. Then reset the board.
 
 > **Note:** After the first boot with `boot.py`, unplug and replug the board so the second CDC channel appears. The device path may change. See [`firmware/micropython/README.md`](../firmware/micropython/README.md) for details.
 
@@ -289,3 +309,4 @@ export COPILOT_RING_LOG_LEVEL=DEBUG
 | `COPILOT_RING_LOG_LEVEL` | `WARNING` | Use `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 | `COPILOT_RING_DRY_RUN` | `false` | Set to `1`, `true`, or `yes` to skip serial sends |
 | `COPILOT_RING_LOCK_TIMEOUT` | `1.0` | Seconds to wait for the multi-session serial lock |
+| `COPILOT_HOME` | `~/.copilot` | Optional Copilot CLI home override; global setup installs hooks under `$COPILOT_HOME/hooks` |

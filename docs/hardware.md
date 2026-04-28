@@ -1,6 +1,6 @@
 # Hardware Setup
 
-This guide covers wiring, parts, and power for the Copilot Command Ring.
+This guide covers wiring, parts, and power for the Copilot Command Ring. For a first build, keep the default low brightness and power the 24-pixel ring from the board's USB 5V/VBUS pin; move to an external 5V supply only if you increase brightness, use more pixels, or see voltage-drop symptoms.
 
 ## Contents
 

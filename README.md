@@ -1,8 +1,8 @@
 # 🟢 Copilot Command Ring
 
-**A physical NeoPixel status ring for GitHub Copilot CLI.**
+**A physical NeoPixel status ring for developers using GitHub Copilot CLI.**
 
-Copilot Command Ring turns an [Adafruit NeoPixel Ring (24 RGB LEDs)](https://www.adafruit.com/product/1586) into a real-time activity indicator for the Copilot CLI agent. Using native Copilot CLI hooks, it lights up when the agent is thinking, flashes on tool success or failure, blinks while waiting for permission, and settles into an idle breathing animation when the session ends — no terminal scraping required.
+Copilot Command Ring turns an [Adafruit NeoPixel Ring (24 RGB LEDs)](https://www.adafruit.com/product/1586) into a glanceable activity indicator for the Copilot CLI agent. Native Copilot CLI hooks drive the ring directly: it lights up while the agent is thinking, flashes on tool success or failure, pulses while waiting for user input or permission, and settles into an idle breathing animation when the session ends — no terminal scraping required.
 
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![CircuitPython](https://img.shields.io/badge/firmware-CircuitPython-blueviolet)
@@ -33,7 +33,7 @@ Copilot Command Ring turns an [Adafruit NeoPixel Ring (24 RGB LEDs)](https://www
 
 ### Recommended first build
 
-For the shortest path to a working ring:
+For the shortest path to a working ring, start with this stack:
 
 | Area | Recommended choice | Why |
 |------|--------------------|-----|
@@ -41,6 +41,8 @@ For the shortest path to a working ring:
 | Hooks | **Global setup** with `copilot-command-ring setup` | One install works in every repo |
 | Hardware | 24-pixel NeoPixel ring powered from the board's USB 5V pin | Matches the project defaults and stays low-current at default brightness |
 | Config | Start with auto-detect; set `COPILOT_RING_PORT` only if needed | Most boards are found automatically |
+
+The steps below follow this path. Once the ring works, use the configuration and firmware docs to customize brightness, pixel count, idle behavior, or a different firmware runtime.
 
 ### 1. Install the host bridge
 
@@ -89,9 +91,10 @@ See [`firmware/circuitpython/README.md`](firmware/circuitpython/README.md) for p
 **MicroPython:**
 
 1. Flash [MicroPython 1.24+](https://micropython.org/download/) onto your board.
-2. Install the USB CDC library: `mpremote mip install usb-device-cdc`
-3. Copy `firmware/micropython/boot.py`, `ring_cdc.py`, `main.py`, and `neopixel_compat.py` to the board using `mpremote`.
-4. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), set `NEOPIXEL_PIN` in `main.py` before resetting.
+2. Install `mpremote` if it is not already available: `pip install mpremote`
+3. Install the USB CDC library: `mpremote mip install usb-device-cdc`
+4. Copy `firmware/micropython/boot.py`, `ring_cdc.py`, `main.py`, and `neopixel_compat.py` to the board using `mpremote`.
+5. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), set `NEOPIXEL_PIN` in `main.py` before resetting.
 
 See [`firmware/micropython/README.md`](firmware/micropython/README.md) for board support matrix and pin configuration.
 
@@ -182,6 +185,16 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 
 Configuration is resolved in this order: **environment variable > config file > default**.
 
+Most users can start with no configuration file. Add only the fields you need:
+
+| Need | Recommended setting |
+|------|---------------------|
+| Auto-detect finds the wrong board | Set `COPILOT_RING_PORT` or `serial_port` |
+| LEDs are too bright or too dim | Set `COPILOT_RING_BRIGHTNESS` or `brightness` |
+| Your ring has a different LED count | Set `COPILOT_RING_PIXEL_COUNT` or `pixel_count` |
+| The ring should go dark after sessions end | Set `"idle_mode": "off"` in the config file |
+| Test without connected hardware | Run `python -m copilot_command_ring.simulate --dry-run`; set `COPILOT_RING_DRY_RUN=1` to make hooks skip serial sends |
+
 ### Environment Variables
 
 | Variable | Default | Description |
@@ -191,8 +204,9 @@ Configuration is resolved in this order: **environment variable > config file > 
 | `COPILOT_RING_BRIGHTNESS` | `0.04` | Runtime LED brightness (`0.0`–`1.0`) |
 | `COPILOT_RING_PIXEL_COUNT` | `24` | Runtime active LED count |
 | `COPILOT_RING_LOG_LEVEL` | `WARNING` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
-| `COPILOT_RING_DRY_RUN` | `false` | If `true`, skip serial sends; the simulator prints JSON Lines |
+| `COPILOT_RING_DRY_RUN` | `false` | Set to `1`, `true`, or `yes` to skip serial sends; the simulator prints JSON Lines |
 | `COPILOT_RING_LOCK_TIMEOUT` | `1.0` | Seconds to wait for the multi-session serial lock before skipping the send |
+| `COPILOT_HOME` | `~/.copilot` | Optional Copilot CLI home override; `setup` installs global hooks to `$COPILOT_HOME/hooks` |
 
 ### Config File
 
