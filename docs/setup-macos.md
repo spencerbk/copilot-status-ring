@@ -4,6 +4,7 @@ Step-by-step guide to set up the Copilot Command Ring on macOS.
 
 ## Contents
 
+- [Recommended path](#recommended-path)
 - [0. Install GitHub Copilot CLI](#0-install-github-copilot-cli)
 - [1. Install Python 3](#1-install-python-3)
 - [2. Install the host bridge](#2-install-the-host-bridge)
@@ -16,6 +17,20 @@ Step-by-step guide to set up the Copilot Command Ring on macOS.
 - [8. Test with simulation](#8-test-with-simulation)
 - [9. Verify hooks](#9-verify-hooks)
 - [Environment variables reference](#environment-variables-reference)
+
+---
+
+## Recommended path
+
+For a first build, follow the default path before customizing anything:
+
+1. Install GitHub Copilot CLI and Python 3.
+2. Install the host bridge in a virtual environment.
+3. Flash the **CircuitPython** firmware and copy `boot.py`, `code.py`, and `neopixel.mpy`.
+4. Run `copilot-command-ring setup` for global hooks.
+5. Start a Copilot CLI session and confirm the ring lights up.
+
+Set `COPILOT_RING_PORT` only if auto-detection does not find the board or selects the wrong `/dev/cu.*` device.
 
 ---
 

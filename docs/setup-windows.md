@@ -4,6 +4,7 @@ Step-by-step guide to set up the Copilot Command Ring on Windows.
 
 ## Contents
 
+- [Recommended path](#recommended-path)
 - [0. Install GitHub Copilot CLI](#0-install-github-copilot-cli)
 - [1. Install Python](#1-install-python)
 - [2. Install the host bridge](#2-install-the-host-bridge)
@@ -15,6 +16,20 @@ Step-by-step guide to set up the Copilot Command Ring on Windows.
 - [7. Test with dry-run simulation](#7-test-with-dry-run-simulation)
 - [8. Verify hooks load in Copilot CLI](#8-verify-hooks-load-in-copilot-cli)
 - [Environment variables reference](#environment-variables-reference)
+
+---
+
+## Recommended path
+
+For a first build, follow the default path before customizing anything:
+
+1. Install GitHub Copilot CLI and Python.
+2. Install the host bridge in a virtual environment.
+3. Flash the **CircuitPython** firmware and copy `boot.py`, `code.py`, and `neopixel.mpy`.
+4. Run `copilot-command-ring setup` for global hooks.
+5. Start a Copilot CLI session and confirm the ring lights up.
+
+Set `COPILOT_RING_PORT` only if auto-detection does not find the board or selects the wrong COM port.
 
 ---
 

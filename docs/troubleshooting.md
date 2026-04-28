@@ -4,6 +4,7 @@ Common issues and solutions for the Copilot Command Ring.
 
 ## Contents
 
+- [Symptom index](#symptom-index)
 - [Start with these checks](#start-with-these-checks)
 - ["No serial port detected"](#no-serial-port-detected)
 - ["pyserial not installed"](#pyserial-not-installed)
@@ -21,9 +22,27 @@ Common issues and solutions for the Copilot Command Ring.
 
 ---
 
+## Symptom index
+
+If you already know what is failing, start here:
+
+| Symptom | Start here |
+|---------|------------|
+| Host says no port was found, or the ring warning says it may be offline | ["No serial port detected"](#no-serial-port-detected) and [Ring appears offline / hook silently doing nothing](#ring-appears-offline--hook-silently-doing-nothing) |
+| `pyserial` import or install errors | ["pyserial not installed"](#pyserial-not-installed) |
+| Copilot CLI runs, but the ring never changes | [Hooks not firing](#hooks-not-firing), then [Ring doesn't light up](#ring-doesnt-light-up) |
+| The startup wipe never appears | [Ring doesn't light up](#ring-doesnt-light-up) |
+| The ring works at first, then freezes, goes dark, or stays on an old state | [Ring becomes unresponsive after long sessions](#ring-becomes-unresponsive-after-long-sessions) |
+| MicroPython CDC, `NEOPIXEL_PIN`, ESP32-C3/C6, or `mpremote` problems | [MicroPython-specific issues](#micropython-specific-issues) |
+| Permission denied opening a serial port | [Permission denied on serial port](#permission-denied-on-serial-port) |
+| Copilot CLI reports hook/control-output errors | [Hook causes Copilot errors](#hook-causes-copilot-errors) |
+| Multiple terminals or repositories are sharing one ring | [Multiple Copilot CLI sessions](#multiple-copilot-cli-sessions) |
+
+---
+
 ## Start with these checks
 
-Most setup issues fall into one of four layers. Check them in this order:
+If you are not sure where the problem is, check the four layers in this order:
 
 1. **Hooks installed:** Run `copilot-command-ring setup` for global hooks, or `copilot-command-ring deploy <path>` for one repo.
 2. **Host can send:** Run `python -m copilot_command_ring.simulate --dry-run` and confirm JSON Lines are printed.
@@ -194,7 +213,7 @@ The firmware may not be running or the wiring may be wrong.
 - Is the data pin connected through a 330 Ω resistor to the ring's DIN?
 - Is the ring getting 5V power?
 - Are all GNDs connected together?
-- See [hardware.md](hardware.md) for the wiring diagram.
+- See [the hardware guide](hardware.md) for the wiring diagram.
 
 **Check brightness:**
 
@@ -307,7 +326,7 @@ The default firmware is configured for 24 pixels (NeoPixel Ring product 1586). I
 
 **Check data pin:**
 
-Make sure the data pin in the firmware matches the pin you've wired. The CircuitPython firmware auto-detects the correct pin for supported boards (e.g. `board.GP6` on Pico, `board.D6` on Feather/XIAO, `board.A0` on QT Py). The MicroPython firmware auto-detects only RP2040/RP2350-family boards wired to GPIO 6; other boards require a manual `NEOPIXEL_PIN` override in `main.py`. See [`docs/hardware.md`](hardware.md) for the full pin table.
+Make sure the data pin in the firmware matches the pin you've wired. The CircuitPython firmware auto-detects the correct pin for supported boards (e.g. `board.GP6` on Pico, `board.D6` on Feather/XIAO, `board.A0` on QT Py). The MicroPython firmware auto-detects only RP2040/RP2350-family boards wired to GPIO 6; other boards require a manual `NEOPIXEL_PIN` override in `main.py`. See [the hardware guide](hardware.md) for the full pin table.
 
 **Check color order:**
 
