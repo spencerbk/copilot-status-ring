@@ -76,6 +76,31 @@ class TestCLIHook:
         assert sys.argv == ["copilot-command-ring", "preToolUse"]
 
 
+class TestCLISetupStatusRing:
+    """The guided setup subcommand delegates to setup_wizard."""
+
+    @patch("copilot_command_ring.setup_wizard.run_setup_status_ring_from_args", return_value=True)
+    def test_setup_status_ring_calls_wizard(self, mock_wizard: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["setup-status-ring", "--options-json"])
+        assert exc_info.value.code == 0
+        mock_wizard.assert_called_once()
+
+    @patch("copilot_command_ring.setup_wizard.run_setup_status_ring_from_args", return_value=False)
+    def test_setup_status_ring_returns_exit_1_on_failure(self, mock_wizard: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["setup-status-ring", "--options-json"])
+        assert exc_info.value.code == 1
+        mock_wizard.assert_called_once()
+
+    @patch("copilot_command_ring.setup_wizard.run_setup_status_ring_from_args", return_value=True)
+    def test_wizard_alias_calls_setup_status_ring(self, mock_wizard: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["wizard", "--options-json"])
+        assert exc_info.value.code == 0
+        mock_wizard.assert_called_once()
+
+
 class TestCLINoCommand:
     """No subcommand prints help and exits 0."""
 

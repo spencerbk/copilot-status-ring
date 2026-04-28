@@ -46,6 +46,13 @@ The steps below follow this path. Once the ring works, use the configuration and
 
 ### 1. Install the host bridge
 
+> **New guided setup:** If this repo is open in Copilot CLI, run
+> `/setup-status-ring` for an interactive setup wizard. The slash command creates
+> a dedicated virtual environment, installs the host bridge, asks whether hooks
+> should apply globally or to one repo, prompts for board/runtime/pin choices,
+> and attempts safe device detection before any firmware write. See
+> [`docs/setup-status-ring.md`](docs/setup-status-ring.md).
+>
 > **Recommended:** Use a virtual environment to isolate dependencies.
 >
 > **macOS / Linux:** `python3 -m venv .venv && source .venv/bin/activate`
