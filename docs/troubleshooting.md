@@ -7,6 +7,7 @@ Common issues and solutions for the Copilot Command Ring.
 - [Symptom index](#symptom-index)
 - [Start with these checks](#start-with-these-checks)
 - ["No serial port detected"](#no-serial-port-detected)
+- [`copilot-command-ring: command not found`](#copilot-command-ring-command-not-found)
 - ["pyserial not installed"](#pyserial-not-installed)
 - [Hooks not firing](#hooks-not-firing)
 - [Ring doesn't light up](#ring-doesnt-light-up)
@@ -29,6 +30,7 @@ If you already know what is failing, start here:
 | Symptom | Start here |
 |---------|------------|
 | Host says no port was found, or the ring warning says it may be offline | ["No serial port detected"](#no-serial-port-detected) and [Ring appears offline / hook silently doing nothing](#ring-appears-offline--hook-silently-doing-nothing) |
+| `copilot-command-ring: command not found` | [`copilot-command-ring: command not found`](#copilot-command-ring-command-not-found) |
 | `pyserial` import or install errors | ["pyserial not installed"](#pyserial-not-installed) |
 | Copilot CLI runs, but the ring never changes | [Hooks not firing](#hooks-not-firing), then [Ring doesn't light up](#ring-doesnt-light-up) |
 | The startup wipe never appears | [Ring doesn't light up](#ring-doesnt-light-up) |
@@ -44,7 +46,7 @@ If you already know what is failing, start here:
 
 If you are not sure where the problem is, check the four layers in this order:
 
-1. **Hooks installed:** Run `copilot-command-ring setup` for global hooks, or `copilot-command-ring deploy <path>` for one repo.
+1. **Hooks installed:** On macOS/Linux, run `./install.sh` from a local clone. For manual installs, run `copilot-command-ring setup` for global hooks, or `copilot-command-ring deploy <path>` for one repo.
 2. **Host can send:** Run `python -m copilot_command_ring.simulate --dry-run` and confirm JSON Lines are printed.
 3. **Serial port visible:** Check Device Manager, `/dev/cu.*`, or `/dev/ttyACM*` and set `COPILOT_RING_PORT` if auto-detect picks the wrong device.
 4. **Firmware running:** Reset the board and confirm the startup wipe appears before testing Copilot CLI hooks.
@@ -101,6 +103,40 @@ Or create `.copilot-command-ring.local.json`:
 
 ---
 
+## `copilot-command-ring: command not found`
+
+The host bridge CLI is not installed in the active shell environment, or the
+venv that contains it is not active.
+
+On macOS/Linux, the preferred fix is to use the bootstrap installer from a local
+clone:
+
+```bash
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+./install.sh
+```
+
+The installer creates a dedicated venv and installs hooks with the exact venv
+Python path, so `copilot-command-ring` does not need to stay on your shell
+`PATH` after setup.
+
+If you already installed manually, either activate the venv before running the
+CLI:
+
+```bash
+source .venv/bin/activate
+copilot-command-ring setup
+```
+
+Or run the command directly from the venv:
+
+```bash
+.venv/bin/copilot-command-ring setup
+```
+
+---
+
 ## "pyserial not installed"
 
 The installed host bridge depends on `pyserial`. Reinstall or upgrade
@@ -135,6 +171,9 @@ The ring doesn't respond when you use Copilot CLI.
 Hooks can be installed globally (works in all repos) or per-repo:
 
 ```bash
+# macOS / Linux installer (recommended)
+./install.sh
+
 # Global setup (recommended — one-time, works everywhere)
 copilot-command-ring setup
 
@@ -164,9 +203,12 @@ same installation method you used originally.
 
 **Reinstalled or moved your virtual environment?**
 
-The hook scripts record the path to the Python interpreter that was active when you ran `setup` or `deploy`. If you delete and recreate the venv, or install on a new machine, the recorded path becomes stale. Re-run the hook install command you used:
+The hook scripts record the path to the Python interpreter that was active when you ran `setup` or `deploy`. If you delete and recreate the venv, or install on a new machine, the recorded path becomes stale. Re-run the installer or hook install command you used:
 
 ```bash
+# macOS / Linux installer
+./install.sh
+
 # Global hooks
 copilot-command-ring setup --force
 
@@ -308,7 +350,7 @@ Copilot hooks are fire-and-forget — individual send failures are logged at `DE
 
 The host bridge now surfaces a one-shot stderr `WARNING` after three consecutive send failures, so persistent breakage becomes visible without needing to change the log level:
 
-```
+```text
 [copilot-command-ring] WARNING: 3 consecutive send failures — ring may be offline. Run with COPILOT_RING_LOG_LEVEL=DEBUG for details.
 ```
 
@@ -471,9 +513,11 @@ The host bridge tags every serial message with a session identifier. Current Cop
 **If the ring seems stuck or unresponsive during multi-session use:**
 
 1. Enable debug logging in one session to see what events are being sent:
+
    ```bash
    export COPILOT_RING_LOG_LEVEL=DEBUG
    ```
+
 2. Check that the lock is not stale. The lock file is at:
    - **Windows:** `%TEMP%\copilot-command-ring.lock`
    - **macOS / Linux:** `/tmp/copilot-command-ring.lock`
@@ -490,9 +534,11 @@ The host bridge tags every serial message with a session identifier. Current Cop
 
 1. **Enable debug logging:** Set `COPILOT_RING_LOG_LEVEL=DEBUG` and check stderr output.
 2. **Test the serial connection:** Open a serial monitor (PuTTY, `screen /dev/ttyACM1 115200`, or Arduino Serial Monitor) and manually send a JSON line:
-   ```
+
+   ```json
    {"event":"sessionStart","state":"session_start"}
    ```
+
    The ring should respond with a white wipe animation.
 3. **Run the simulator:** `python3 -m copilot_command_ring.simulate --dry-run` to verify the host bridge logic works independently of hardware.
 4. **Check the firmware console:** Connect to the CircuitPython REPL console port and look for error tracebacks.

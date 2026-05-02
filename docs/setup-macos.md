@@ -7,7 +7,7 @@ Step-by-step guide to set up the Copilot Command Ring on macOS.
 - [Recommended path](#recommended-path)
 - [0. Install GitHub Copilot CLI](#0-install-github-copilot-cli)
 - [1. Install Python 3](#1-install-python-3)
-- [2. Install the host bridge](#2-install-the-host-bridge)
+- [2. Run the installer](#2-run-the-installer)
 - [3. Find your serial device](#3-find-your-serial-device)
 - [4. Configure the serial port](#4-configure-the-serial-port)
 - [5. Terminal access permissions](#5-terminal-access-permissions)
@@ -25,9 +25,9 @@ Step-by-step guide to set up the Copilot Command Ring on macOS.
 For a first build, follow the default path before customizing anything:
 
 1. Install GitHub Copilot CLI and Python 3.
-2. Install the host bridge in a virtual environment.
-3. Flash the **CircuitPython** firmware and copy `boot.py`, `code.py`, and `neopixel.mpy`.
-4. Run `copilot-command-ring setup` for global hooks.
+2. Run `./install.sh` from a local clone.
+3. Flash the **CircuitPython** UF2 if the board is not already running it.
+4. Copy the prepared firmware files to `CIRCUITPY` if the installer did not copy them for you.
 5. Start a Copilot CLI session and confirm the ring lights up.
 
 Set `COPILOT_RING_PORT` only if auto-detection does not find the board or selects the wrong `/dev/cu.*` device.
@@ -62,25 +62,30 @@ Or download from [python.org/downloads](https://www.python.org/downloads/).
 
 ---
 
-## 2. Install the host bridge
+## 2. Run the installer
 
-> **Recommended:** Create a virtual environment first:
->
-> ```bash
-> python3 -m venv .venv && source .venv/bin/activate
-> ```
->
-> The hook install commands in step 7 record the Python path so hooks work even outside the venv.
+From a local clone:
 
 ```bash
-pip install git+https://github.com/spencerbk/copilot-status-ring.git
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+./install.sh
 ```
 
-Verify:
+The installer creates a dedicated user-level virtual environment, installs the
+host bridge, installs global hooks, prepares CircuitPython firmware files, and
+runs a dry-run validation. It does not depend on `copilot-command-ring` already
+being on `PATH`.
+
+Useful options:
 
 ```bash
-copilot-command-ring --help
+./install.sh --yes
+./install.sh --firmware-target /Volumes/CIRCUITPY
+./install.sh --repo ~/code/my-project
 ```
+
+Manual fallback: create a venv, run `pip install git+https://github.com/spencerbk/copilot-status-ring.git`, then run `copilot-command-ring setup`.
 
 ---
 
@@ -94,7 +99,7 @@ ls /dev/cu.usbmodem*
 
 You should see something like:
 
-```
+```text
 /dev/cu.usbmodem14101
 /dev/cu.usbmodem14201
 ```
@@ -154,11 +159,14 @@ macOS may require granting your terminal app permission to access USB devices:
 3. Drag the `.uf2` file onto the boot drive that appears (e.g. `RPI-RP2`).
 4. The board reboots and a `CIRCUITPY` volume appears in Finder.
 5. Copy the firmware files:
+
    ```bash
-   cp firmware/circuitpython/boot.py /Volumes/CIRCUITPY/boot.py
-   cp firmware/circuitpython/code.py /Volumes/CIRCUITPY/code.py
+   # Use the path printed by ./install.sh when available:
+   cp ~/.local/share/copilot-command-ring/firmware/circuitpython/boot.py /Volumes/CIRCUITPY/boot.py
+   cp ~/.local/share/copilot-command-ring/firmware/circuitpython/code.py /Volumes/CIRCUITPY/code.py
    ```
-6. Install `neopixel.mpy` from the [Adafruit CircuitPython Bundle](https://circuitpython.org/libraries) into `CIRCUITPY/lib/`.
+
+6. Install `neopixel.mpy` from the [Adafruit CircuitPython Bundle](https://circuitpython.org/libraries) into `CIRCUITPY/lib/` if the installer did not already install it with `circup`.
 7. The board reboots automatically.
 
 > **Note:** After copying `boot.py`, unplug and replug the board so the USB CDC data channel activates and the device appears as "Copilot Command Ring". The device path may change.
@@ -173,20 +181,26 @@ Use MicroPython instead of CircuitPython if you prefer the MicroPython ecosystem
 2. Put your board into bootloader mode (double-tap reset on RP2040 boards).
 3. Drag the `.uf2` file onto the boot drive that appears.
 4. The board reboots. Install `mpremote` if it is not already available:
+
    ```bash
    pip install mpremote
    ```
+
 5. Install the USB CDC library:
+
    ```bash
    mpremote mip install usb-device-cdc
    ```
+
 6. Copy the firmware files:
+
    ```bash
    mpremote cp firmware/micropython/boot.py :boot.py
    mpremote cp firmware/micropython/ring_cdc.py :ring_cdc.py
    mpremote cp firmware/micropython/neopixel_compat.py :neopixel_compat.py
    mpremote cp firmware/micropython/main.py :main.py
    ```
+
 7. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), edit `main.py` and set `NEOPIXEL_PIN` to the correct GPIO number before resetting. Then reset the board.
 
 > **Note:** After the first boot with `boot.py`, unplug and replug the board so the second CDC channel appears. The device path may change. See [`firmware/micropython/README.md`](../firmware/micropython/README.md) for details.
@@ -203,6 +217,8 @@ copilot-command-ring setup
 
 This installs hooks to `~/.copilot/hooks/` by default, or `$COPILOT_HOME/hooks/` when `COPILOT_HOME` is set, so the ring works in **every** repository automatically. The hooks record the path to your current Python, so they work even when the venv isn't active.
 
+> **Note:** If you used `./install.sh`, global hooks are already installed.
+>
 > **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring setup --force` to update the recorded Python path.
 
 **Option B — Per-repo deploy:**
@@ -225,7 +241,7 @@ python3 -m copilot_command_ring.simulate --dry-run
 
 You should see JSON Lines output like:
 
-```
+```text
 {"event":"sessionStart","state":"session_start","source":"new","ttl_s":60,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 {"event":"preToolUse","state":"working","tool":"bash","ttl_s":300,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ...
@@ -241,7 +257,7 @@ python3 -m copilot_command_ring.simulate
 
 ## 9. Verify hooks
 
-1. Ensure you ran `copilot-command-ring setup` (global) or `copilot-command-ring deploy <path>` (per-repo).
+1. Ensure you ran `./install.sh`, `copilot-command-ring setup` (global), or `copilot-command-ring deploy <path>` (per-repo).
 2. Open Copilot CLI in a terminal inside the repository.
 3. Start a session — the ring should light up.
 

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from copilot_command_ring.firmware_install import (
     arduino_pin_expression,
     circuitpython_pin_expression,
     install_circuitpython_files,
+    install_circuitpython_neopixel,
     micropython_pin_expression,
     prepare_firmware_files,
 )
@@ -76,3 +78,28 @@ def test_install_circuitpython_files_copies_prepared_files(tmp_path: Path) -> No
     assert target / "boot.py" in written
     assert target / "code.py" in written
     assert (target / "code.py").is_file()
+
+
+def test_install_circuitpython_neopixel_runs_circup(tmp_path: Path) -> None:
+    target = tmp_path / "CIRCUITPY"
+    target.mkdir()
+    commands: list[tuple[str, ...]] = []
+
+    def fake_runner(command: Sequence[str]) -> None:
+        commands.append(tuple(command))
+
+    install_circuitpython_neopixel(target, Path("/venv/bin/python"), runner=fake_runner)
+
+    assert target.joinpath("lib").is_dir()
+    assert commands == [
+        ("/venv/bin/python", "-m", "pip", "install", "--upgrade", "circup"),
+        (
+            "/venv/bin/python",
+            "-m",
+            "circup",
+            "--path",
+            str(target),
+            "install",
+            "neopixel",
+        ),
+    ]

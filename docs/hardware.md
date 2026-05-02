@@ -50,7 +50,7 @@ This works well at the default low brightness. Add a 74AHCT125 level shifter if 
 
 The MCU plugs into your computer via USB and provides both power and data to the ring. Three wires run from the MCU to the NeoPixel ring:
 
-```
+```text
          USB cable
 Computer ════════════ MCU
                        ├─ D6  ──[330Ω*]──▶ Ring DIN
@@ -109,16 +109,19 @@ The CircuitPython firmware auto-detects the NeoPixel data pin using `board.board
 | Seeed Studio XIAO ESP32-C6 | `board.D6` | Set manually | `6` | MicroPython requires a manual override and runs in degraded mode |
 
 To override CircuitPython auto-detection, edit `NEOPIXEL_PIN` at the top of `code.py`:
+
 ```python
 NEOPIXEL_PIN = board.A0  # override auto-detection
 ```
 
 For Arduino, edit `NEOPIXEL_PIN` in the `.ino` sketch:
+
 ```cpp
 #define NEOPIXEL_PIN A0  // QT Py boards
 ```
 
 For MicroPython, edit `NEOPIXEL_PIN` at the top of `main.py`:
+
 ```python
 NEOPIXEL_PIN = 18  # example: use the GPIO number for your board's data pin
 ```
@@ -167,7 +170,7 @@ NeoPixels expect a **5V logic level** on the data line. Most modern MCUs (RP2040
 
 **Wiring with level shifter:**
 
-```
+```text
 MCU D6  ──────────▶ 74AHCT125 Input (1A)
                     74AHCT125 Output (1Y) ──[330Ω]──▶ Ring DIN
 MCU 5V  ──────────▶ 74AHCT125 VCC ──────────────────▶ Ring 5V

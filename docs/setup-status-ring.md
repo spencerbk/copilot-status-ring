@@ -18,12 +18,30 @@ keeping the durable setup logic in the Python package.
 7. Runs a dry-run simulation command after hooks are installed.
 
 CircuitPython can copy prepared `boot.py` and `code.py` to a detected or supplied
-`CIRCUITPY` drive. MicroPython uses `mpremote` after approval. Arduino remains a
-guided/manual upload path unless you run the Arduino tooling yourself.
+`CIRCUITPY` drive and attempts to install the `neopixel` dependency with
+`circup`; if that library install fails, setup still completes and prints the
+manual `CIRCUITPY/lib/neopixel.mpy` fallback. MicroPython uses `mpremote` after
+approval. Arduino remains a guided/manual upload path unless you run the Arduino
+tooling yourself.
+
+## macOS/Linux bootstrap script
+
+For a first setup on macOS or Linux, prefer the repo-level installer:
+
+```bash
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+./install.sh
+```
+
+`install.sh` is a thin bootstrap wrapper around this same Python wizard. It
+creates the dedicated venv, installs the package into it, then runs
+`setup-status-ring` by module path so the user never needs
+`copilot-command-ring` to already be on `PATH`.
 
 ## Fallback terminal command
 
-If the slash command is not available, run the Python wizard directly:
+If the slash command and `install.sh` are not available, run the Python wizard directly:
 
 ```powershell
 copilot-command-ring setup-status-ring

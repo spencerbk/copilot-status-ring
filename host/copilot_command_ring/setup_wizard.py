@@ -27,8 +27,10 @@ from .config import Config
 from .detect_ports import detect_serial_port
 from .firmware_install import (
     FirmwareInstallError,
+    PreparedFirmware,
     find_circuitpython_drive,
     install_circuitpython_files,
+    install_circuitpython_neopixel,
     install_micropython_files,
     prepare_firmware_files,
 )
@@ -149,6 +151,7 @@ class SetupResult:
     detected_port: str | None
     firmware_written: tuple[Path, ...] = ()
     firmware_prepared_dir: Path | None = None
+    firmware_warnings: tuple[str, ...] = ()
 
 
 def default_state_dir(
@@ -358,21 +361,39 @@ def _firmware_output_dir(plan: SetupPlan, output_dir: Path | None) -> Path | Non
     return default_state_dir() / "firmware" / plan.selections.runtime
 
 
+def _install_circuitpython_to_target(
+    prepared: PreparedFirmware,
+    target: Path,
+    python_executable: Path,
+    *,
+    runner: Runner,
+) -> tuple[tuple[Path, ...], tuple[str, ...]]:
+    written = install_circuitpython_files(prepared, target)
+    try:
+        install_circuitpython_neopixel(target, python_executable, runner=runner)
+    except FirmwareInstallError as exc:
+        return written, (str(exc),)
+    return written, ()
+
+
 def execute_setup_plan(
     plan: SetupPlan,
     *,
     runner: Runner = _run_checked,
     output_dir: Path | None = None,
+    skip_install: bool = False,
 ) -> SetupResult:
     """Execute a setup plan and return a summary."""
     if plan.create_venv:
         runner(plan.create_venv_command.command)
-    runner(plan.install_command.command)
+    if not skip_install:
+        runner(plan.install_command.command)
     runner(plan.hook_command.command)
 
     detected_port = detect_serial_port(Config()) if plan.selections.auto_detect_port else None
     firmware_written: tuple[Path, ...] = ()
     prepared_dir: Path | None = None
+    firmware_warnings: tuple[str, ...] = ()
 
     if plan.selections.approve_firmware:
         persistent_output = _firmware_output_dir(plan, output_dir)
@@ -385,9 +406,11 @@ def execute_setup_plan(
                 )
                 if plan.selections.runtime == RUNTIME_CIRCUITPYTHON:
                     if plan.selections.firmware_target is not None:
-                        firmware_written = install_circuitpython_files(
+                        firmware_written, firmware_warnings = _install_circuitpython_to_target(
                             prepared,
                             plan.selections.firmware_target,
+                            plan.python_executable,
+                            runner=runner,
                         )
                 elif plan.firmware.automatic:
                     install_micropython_files(
@@ -404,9 +427,11 @@ def execute_setup_plan(
             prepared_dir = prepared.directory
             if plan.selections.runtime == RUNTIME_CIRCUITPYTHON:
                 if plan.selections.firmware_target is not None:
-                    firmware_written = install_circuitpython_files(
+                    firmware_written, firmware_warnings = _install_circuitpython_to_target(
                         prepared,
                         plan.selections.firmware_target,
+                        plan.python_executable,
+                        runner=runner,
                     )
             elif plan.firmware.automatic:
                 install_micropython_files(
@@ -421,6 +446,7 @@ def execute_setup_plan(
         detected_port=detected_port,
         firmware_written=firmware_written,
         firmware_prepared_dir=prepared_dir,
+        firmware_warnings=firmware_warnings,
     )
 
 
@@ -574,6 +600,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         default=PACKAGE_SPEC_DEFAULT,
         help="Package spec to install into the setup venv",
     )
+    parser.add_argument(
+        "--skip-install",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
 
 
 def run_setup_status_ring_from_args(args: argparse.Namespace) -> bool:
@@ -608,13 +639,15 @@ def run_setup_status_ring_from_args(args: argparse.Namespace) -> bool:
             print("Aborted.", file=sys.stderr)
             return False
 
-        result = execute_setup_plan(plan)
+        result = execute_setup_plan(plan, skip_install=args.skip_install)
         print(f"Setup complete. Venv: {result.plan.venv_dir}", file=sys.stderr)
         if result.detected_port:
             print(f"Detected serial port: {result.detected_port}", file=sys.stderr)
         if result.firmware_written:
             for path in result.firmware_written:
                 print(f"Wrote firmware file: {path}", file=sys.stderr)
+            for warning in result.firmware_warnings:
+                print(f"Firmware warning: {warning}", file=sys.stderr)
         elif result.firmware_prepared_dir is not None:
             print(f"Prepared firmware files: {result.firmware_prepared_dir}", file=sys.stderr)
         elif selections.approve_firmware:

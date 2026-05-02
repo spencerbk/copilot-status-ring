@@ -246,6 +246,37 @@ def install_circuitpython_files(prepared: PreparedFirmware, target_drive: Path) 
     return tuple(written)
 
 
+def install_circuitpython_neopixel(
+    target_drive: Path,
+    python_executable: Path,
+    *,
+    runner: CommandRunner,
+) -> None:
+    """Install the CircuitPython ``neopixel`` library with ``circup``."""
+    if not target_drive.is_dir():
+        raise FirmwareInstallError(f"CircuitPython target is not a directory: {target_drive}")
+
+    (target_drive / "lib").mkdir(exist_ok=True)
+    try:
+        runner([str(python_executable), "-m", "pip", "install", "--upgrade", "circup"])
+        runner(
+            [
+                str(python_executable),
+                "-m",
+                "circup",
+                "--path",
+                str(target_drive),
+                "install",
+                "neopixel",
+            ]
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise FirmwareInstallError(
+            "Could not install neopixel automatically; copy neopixel.mpy from the "
+            "Adafruit CircuitPython Bundle to CIRCUITPY/lib/."
+        ) from exc
+
+
 def install_micropython_files(
     prepared: PreparedFirmware,
     python_executable: Path,

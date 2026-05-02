@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 from copilot_command_ring.boards import RUNTIME_CIRCUITPYTHON, RUNTIME_MICROPYTHON
-from copilot_command_ring.firmware_install import PreparedFirmware
+from copilot_command_ring.firmware_install import FirmwareInstallError, PreparedFirmware
 from copilot_command_ring.setup_wizard import (
     SCOPE_GLOBAL,
     SCOPE_REPO,
@@ -31,7 +31,7 @@ def test_default_state_dir_uses_localappdata_on_windows() -> None:
 
 def test_venv_python_path_uses_windows_scripts_dir() -> None:
     result = venv_python_path(Path(r"C:\ring\.venv"), os_name="nt")
-    assert result == Path(r"C:\ring\.venv\Scripts\python.exe")
+    assert str(result).replace("/", "\\") == r"C:\ring\.venv\Scripts\python.exe"
 
 
 def test_global_plan_installs_global_hooks(tmp_path: Path) -> None:
@@ -126,6 +126,30 @@ def test_execute_setup_plan_runs_expected_commands(tmp_path: Path) -> None:
     ]
 
 
+def test_execute_setup_plan_can_skip_package_install(tmp_path: Path) -> None:
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=False,
+        approve_firmware=False,
+    )
+    plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv", package_spec=".")
+    commands: list[tuple[str, ...]] = []
+
+    def fake_runner(command: Sequence[str]) -> None:
+        commands.append(tuple(command))
+
+    execute_setup_plan(plan, runner=fake_runner, skip_install=True)
+
+    assert commands == [
+        plan.create_venv_command.command,
+        plan.hook_command.command,
+        plan.validation_command.command,
+    ]
+
+
 def test_execute_setup_plan_can_copy_circuitpython_firmware(tmp_path: Path) -> None:
     target = tmp_path / "CIRCUITPY"
     target.mkdir()
@@ -145,6 +169,31 @@ def test_execute_setup_plan_can_copy_circuitpython_firmware(tmp_path: Path) -> N
 
     assert target / "boot.py" in result.firmware_written
     assert target / "code.py" in result.firmware_written
+    assert result.firmware_warnings == ()
+
+
+def test_circuitpython_neopixel_warning_does_not_fail_setup(tmp_path: Path) -> None:
+    target = tmp_path / "CIRCUITPY"
+    target.mkdir()
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=False,
+        approve_firmware=True,
+        firmware_target=target,
+    )
+    plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv", package_spec=".")
+
+    def fake_runner(command: Sequence[str]) -> None:
+        if "circup" in command:
+            raise FirmwareInstallError("circup failed")
+
+    result = execute_setup_plan(plan, runner=fake_runner, output_dir=tmp_path / "out")
+
+    assert target / "boot.py" in result.firmware_written
+    assert result.firmware_warnings == ("circup failed",)
 
 
 def test_manual_firmware_preparation_uses_persistent_output(tmp_path: Path) -> None:
