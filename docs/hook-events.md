@@ -233,6 +233,6 @@ This sends diagnostic output to **stderr only**.
 2. Unknown keys in messages must be ignored by firmware.
 3. Unknown `state` values must not crash firmware — fall back to idle/off.
 4. The host must exit quickly (target < 1 second total hook runtime).
-5. If no serial device is found, the hook exits silently — it must never block Copilot CLI.
+5. If no serial device is found or a serial send fails, the hook logs at `DEBUG` level and skips the send; after three consecutive failures it emits one stderr WARNING. It must never block Copilot CLI.
 6. When the `session` field is present, firmware uses it for multi-session state arbitration. Messages without `session` are handled with legacy single-session behavior: the last persistent untagged state remains active until another persistent state replaces it, and untagged transient states flash on top of it once.
 7. `ttl_s`, `idle_mode`, `brightness`, and `pixel_count` are optional and backward compatible — firmware that predates them simply ignores the extra keys.

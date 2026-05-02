@@ -201,7 +201,7 @@ Use MicroPython instead of CircuitPython if you prefer the MicroPython ecosystem
 copilot-command-ring setup
 ```
 
-This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. The hooks record the path to your current Python, so they work even when the venv isn't active.
+This installs hooks to `~/.copilot/hooks/` by default, or `$COPILOT_HOME/hooks/` when `COPILOT_HOME` is set, so the ring works in **every** repository automatically. The hooks record the path to your current Python, so they work even when the venv isn't active.
 
 > **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring setup --force` to update the recorded Python path.
 

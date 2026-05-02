@@ -432,6 +432,8 @@ python3 -m serial.tools.list_ports -v
 
 This shows all serial ports with their descriptions, which can help you identify the correct one.
 
+Auto-detection checks each serial device description against `device_match.description_contains` using case-insensitive substring matches. Narrow this list if another serial device is selected before the ring, or set `serial_port` for a fixed override.
+
 **Use a config file:**
 
 ```json
