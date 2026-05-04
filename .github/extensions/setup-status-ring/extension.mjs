@@ -10,6 +10,7 @@ import { joinSession } from "@github/copilot-sdk/extension";
 const extensionDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(extensionDir, "..", "..", "..");
 const hostDir = path.join(repoRoot, "host");
+const venvDir = path.join(repoRoot, ".venv");
 const pythonCandidates =
     process.platform === "win32"
         ? [
@@ -220,9 +221,18 @@ async function runSetup(session) {
         return;
     }
 
-    await session.log("Running Copilot Command Ring setup...");
+    await session.log(`Running Copilot Command Ring setup (venv: ${venvDir})...`);
     const { stdout, stderr } = await runPython(
-        ["setup-status-ring", "--from-json", "-", "--yes"],
+        [
+            "setup-status-ring",
+            "--from-json",
+            "-",
+            "--yes",
+            "--venv-dir",
+            venvDir,
+            "--package-spec",
+            repoRoot,
+        ],
         JSON.stringify(selections),
     );
     const output = [stdout.trim(), stderr.trim()].filter(Boolean).join("\n");

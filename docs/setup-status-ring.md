@@ -6,9 +6,13 @@ keeping the durable setup logic in the Python package.
 
 ## What the wizard does
 
-1. Creates or reuses a dedicated user-level virtual environment for the host
-   bridge.
-2. Installs or upgrades `copilot-command-ring` in that environment.
+1. Creates or reuses `<repo>/.venv` inside your local clone (falls back to a
+   user-level venv at `~/.local/share/copilot-command-ring/.venv` /
+   `%LOCALAPPDATA%\copilot-command-ring\.venv` if no clone is detected).
+2. Installs or upgrades `copilot-command-ring` into that environment from your
+   local clone path (no network needed). Falls back to
+   `git+https://github.com/spencerbk/copilot-status-ring.git` when no clone is
+   detected.
 3. Asks whether hooks should be installed globally for all repos or deployed to
    one target repo.
 4. Prompts for the board, firmware runtime, and NeoPixel data pin using the
@@ -35,9 +39,9 @@ cd copilot-status-ring
 ```
 
 `install.sh` is a thin bootstrap wrapper around this same Python wizard. It
-creates the dedicated venv, installs the package into it, then runs
-`setup-status-ring` by module path so the user never needs
-`copilot-command-ring` to already be on `PATH`.
+creates `<repo>/.venv` inside the clone, installs the package into it from
+local source, then runs `setup-status-ring` by module path so the user never
+needs `copilot-command-ring` to already be on `PATH`.
 
 ## Fallback terminal command
 
@@ -64,5 +68,6 @@ For non-interactive callers, pass selections as JSON:
 ```
 
 Use `--options-json` to inspect the board/runtime matrix consumed by the
-extension, and `--plan-only` to print the commands that would run without
-executing them.
+extension, `--plan-only` to print the commands that would run without
+executing them, and `--venv-dir` / `--package-spec` to override the auto-detected
+defaults (repo-local `.venv` and local-clone install spec).

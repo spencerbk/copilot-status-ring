@@ -54,42 +54,51 @@ cd copilot-status-ring
 ./install.sh
 ```
 
-The installer creates a dedicated user-level virtual environment, installs the
-host bridge, installs global Copilot CLI hooks, prepares the default
-Raspberry Pi Pico / CircuitPython firmware files, and runs a dry-run validation.
-It does **not** require `copilot-command-ring` to already be on `PATH`.
+The installer creates a `.venv` inside the cloned repo, installs the host
+bridge from your local checkout (no network install), installs global Copilot
+CLI hooks, prepares the default Raspberry Pi Pico / CircuitPython firmware
+files, and runs a dry-run validation. It does **not** require
+`copilot-command-ring` to already be on `PATH`.
 
 If your `CIRCUITPY` drive is already mounted, the installer can copy `boot.py`
 and `code.py` there when you approve it. Otherwise it leaves prepared firmware
 files under your user-level setup directory and prints the copy location.
 
-**Windows / manual fallback:**
+**Windows / Copilot CLI guided setup:**
 
-> **New guided setup:** If this repo is open in Copilot CLI, run
-> `/setup-status-ring` for an interactive setup wizard. The slash command creates
-> a dedicated virtual environment, installs the host bridge, asks whether hooks
-> should apply globally or to one repo, prompts for board/runtime/pin choices,
-> and attempts safe device detection before any firmware write. See
-> [`docs/setup-status-ring.md`](docs/setup-status-ring.md).
->
-> **Recommended:** Use a virtual environment to isolate dependencies.
->
-> **macOS / Linux:** `python3 -m venv .venv && source .venv/bin/activate`
-> **Windows:** `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`
->
-> Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
+> If this repo is open in Copilot CLI, run `/setup-status-ring` for an
+> interactive setup wizard. The slash command creates `<repo>/.venv` if it
+> doesn't already exist, installs the host bridge from your local clone, asks
+> whether hooks should apply globally or to one repo, prompts for
+> board/runtime/pin choices, and attempts safe device detection before any
+> firmware write. See [`docs/setup-status-ring.md`](docs/setup-status-ring.md).
 
-```bash
-pip install git+https://github.com/spencerbk/copilot-status-ring.git
-```
+<details>
+<summary><strong>Manual install (advanced)</strong></summary>
 
-Or from a local clone:
+The wizard handles venv creation and package install for you. If you'd rather
+do it yourself — for example, to install into an existing Python environment —
+run from a local clone:
 
 ```bash
 git clone https://github.com/spencerbk/copilot-status-ring.git
 cd copilot-status-ring
+python3 -m venv .venv          # macOS / Linux
+# or: py -3 -m venv .venv       # Windows
+. .venv/bin/activate           # macOS / Linux
+# or: .\.venv\Scripts\Activate.ps1  # Windows
 pip install .
+copilot-command-ring setup
 ```
+
+Or pip-install from the GitHub URL into any environment:
+
+```bash
+pip install git+https://github.com/spencerbk/copilot-status-ring.git
+copilot-command-ring setup
+```
+
+</details>
 
 ### 2. Flash firmware
 
@@ -161,7 +170,9 @@ copilot-command-ring deploy <path-to-repo>
 
 This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. Repeat for each repo where you want the ring active.
 
-> **Note:** If you recreate the virtual environment or install on a new machine, re-run `setup --force` or `deploy <path> --force` to update the recorded Python path.
+> **Note:** If you recreate the virtual environment or move the clone, re-run
+> `/setup-status-ring` (or `./install.sh --yes`) to refresh the hook scripts —
+> they embed the absolute path to the venv's Python.
 >
 > **Tip:** The hooks auto-detect your board by USB serial description. If auto-detect picks the wrong port or finds nothing, set `COPILOT_RING_PORT` explicitly.
 
@@ -347,9 +358,11 @@ git clone https://github.com/spencerbk/copilot-status-ring.git
 cd copilot-status-ring
 ```
 
-Create a venv (macOS / Linux: `python3 -m venv .venv && source .venv/bin/activate` · Windows: `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`), then:
+Create `.venv` inside the clone (or let `/setup-status-ring` / `./install.sh` do it for you), then install with the dev extras:
 
 ```bash
+python3 -m venv .venv && source .venv/bin/activate    # macOS / Linux
+# or: py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1  # Windows
 pip install -e ".[dev]"
 ```
 

@@ -57,7 +57,7 @@ Make installation easier for end users.
 
 | Item | Status | Description |
 |------|--------|-------------|
-| macOS/Linux installer | ✅ Done | `./install.sh` bootstraps a dedicated venv, installs the host bridge, runs the setup wizard, installs hooks, prepares firmware files, and avoids relying on `copilot-command-ring` being on `PATH` |
+| macOS/Linux installer | ✅ Done | `./install.sh` bootstraps a repo-local `.venv` inside the clone, installs the host bridge from local source, runs the setup wizard, installs hooks, prepares firmware files, and avoids relying on `copilot-command-ring` being on `PATH` |
 | pip install from Git | ✅ Done | `pip install git+https://github.com/spencerbk/copilot-status-ring.git` installs the host bridge and CLI |
 | Global hooks CLI | ✅ Done | `copilot-command-ring setup` deploys hooks to `~/.copilot/hooks/` by default, or `$COPILOT_HOME/hooks/` when `COPILOT_HOME` is set (one-time, all repos) |
 | Windows PowerShell installer | Planned | Add `install.ps1` with Windows-native Python discovery, venv creation, package install, COM-port guidance, CircuitPython drive detection, and safe delegation to the same Python setup wizard used by `install.sh` |

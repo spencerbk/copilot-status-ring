@@ -12,16 +12,113 @@ import pytest
 from copilot_command_ring.boards import RUNTIME_CIRCUITPYTHON, RUNTIME_MICROPYTHON
 from copilot_command_ring.firmware_install import FirmwareInstallError, PreparedFirmware
 from copilot_command_ring.setup_wizard import (
+    PACKAGE_SPEC_DEFAULT,
     SCOPE_GLOBAL,
     SCOPE_REPO,
     SetupWizardError,
     WizardSelections,
     build_setup_plan,
+    default_package_spec,
     default_state_dir,
+    default_venv_dir,
     execute_setup_plan,
+    find_repo_root,
     selections_from_json,
     venv_python_path,
 )
+
+
+def _make_clone(tmp_path: Path) -> Path:
+    """Create a fake copilot-status-ring clone for find_repo_root tests."""
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "copilot-command-ring"\nversion = "0.0.0"\n',
+        encoding="utf-8",
+    )
+    nested = tmp_path / "host" / "copilot_command_ring"
+    nested.mkdir(parents=True)
+    return nested
+
+
+def test_find_repo_root_walks_up_to_pyproject(tmp_path: Path) -> None:
+    nested = _make_clone(tmp_path)
+    assert find_repo_root(nested / "setup_wizard.py") == tmp_path.resolve()
+
+
+def test_find_repo_root_returns_none_outside_clone(tmp_path: Path) -> None:
+    bare = tmp_path / "elsewhere"
+    bare.mkdir()
+    assert find_repo_root(bare) is None
+
+
+def test_find_repo_root_ignores_unrelated_pyproject(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "some-other-package"\nversion = "1.0"\n',
+        encoding="utf-8",
+    )
+    nested = tmp_path / "src"
+    nested.mkdir()
+    assert find_repo_root(nested) is None
+
+
+def test_default_venv_dir_prefers_repo_local_when_in_clone(tmp_path: Path) -> None:
+    assert default_venv_dir(repo_root=tmp_path) == tmp_path / ".venv"
+
+
+def test_default_venv_dir_falls_back_to_state_dir_outside_clone() -> None:
+    with patch("copilot_command_ring.setup_wizard.find_repo_root", return_value=None):
+        result = default_venv_dir()
+    assert result == default_state_dir() / ".venv"
+
+
+def test_default_package_spec_uses_repo_root_when_in_clone(tmp_path: Path) -> None:
+    assert default_package_spec(repo_root=tmp_path) == str(tmp_path)
+
+
+def test_default_package_spec_falls_back_to_git_url() -> None:
+    with patch("copilot_command_ring.setup_wizard.find_repo_root", return_value=None):
+        result = default_package_spec()
+    assert result == PACKAGE_SPEC_DEFAULT
+
+
+def test_build_setup_plan_uses_repo_local_defaults(tmp_path: Path) -> None:
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+    )
+    with patch(
+        "copilot_command_ring.setup_wizard.find_repo_root", return_value=tmp_path
+    ):
+        plan = build_setup_plan(selections)
+    assert plan.venv_dir == (tmp_path / ".venv").resolve()
+    assert plan.install_command.command[-1] == str(tmp_path)
+
+
+def test_build_setup_plan_falls_back_to_git_url_when_no_clone(tmp_path: Path) -> None:
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+    )
+    with patch("copilot_command_ring.setup_wizard.find_repo_root", return_value=None):
+        plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv")
+    assert plan.install_command.command[-1] == PACKAGE_SPEC_DEFAULT
+
+
+def test_build_setup_plan_treats_empty_package_spec_as_default(tmp_path: Path) -> None:
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+    )
+    with patch(
+        "copilot_command_ring.setup_wizard.find_repo_root", return_value=tmp_path
+    ):
+        plan = build_setup_plan(selections, package_spec="")
+    assert plan.install_command.command[-1] == str(tmp_path)
 
 
 def test_default_state_dir_uses_localappdata_on_windows() -> None:

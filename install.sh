@@ -20,7 +20,7 @@ PIN_SET=0
 AUTO_DETECT_PORT="true"
 PREPARE_FIRMWARE="auto"
 FIRMWARE_TARGET=""
-VENV_DIR="$STATE_DIR/.venv"
+VENV_DIR="$REPO_ROOT/.venv"
 PACKAGE_SPEC="."
 
 usage() {
@@ -45,7 +45,8 @@ Options:
   --prepare-firmware       Prepare firmware files; MicroPython runs mpremote.
   --no-firmware            Do not prepare or write firmware files.
   --firmware-target PATH   Copy CircuitPython files to a CIRCUITPY drive.
-  --venv-dir PATH          Dedicated setup virtual environment path.
+  --venv-dir PATH          Dedicated setup virtual environment path
+                           (default: <repo>/.venv inside the clone).
   --package-spec SPEC      pip package spec to install (default: local repo).
   -h, --help               Show this help.
 

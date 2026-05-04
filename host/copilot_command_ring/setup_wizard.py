@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -38,6 +39,11 @@ from .firmware_install import (
 PACKAGE_SPEC_DEFAULT = "git+https://github.com/spencerbk/copilot-status-ring.git"
 SCOPE_GLOBAL = "global"
 SCOPE_REPO = "repo"
+
+_PYPROJECT_NAME_PATTERN = re.compile(
+    r"^\s*name\s*=\s*['\"]copilot-command-ring['\"]\s*$",
+    re.MULTILINE,
+)
 
 Runner = Callable[[Sequence[str]], None]
 
@@ -173,9 +179,55 @@ def default_state_dir(
     return Path.home() / ".local" / "share" / "copilot-command-ring"
 
 
-def default_venv_dir() -> Path:
-    """Return the default dedicated virtual environment path."""
+def find_repo_root(start: Path | None = None) -> Path | None:
+    """Walk up from *start* looking for a copilot-status-ring clone.
+
+    Returns the first ancestor directory whose ``pyproject.toml`` declares
+    ``name = "copilot-command-ring"``. Returns ``None`` when no such clone is
+    detected (for example, when this module is imported from a wheel that was
+    pip-installed into a stand-alone environment).
+    """
+    origin = (start if start is not None else Path(__file__)).resolve()
+    if origin.is_file():
+        origin = origin.parent
+    for candidate in (origin, *origin.parents):
+        pyproject = candidate / "pyproject.toml"
+        if not pyproject.is_file():
+            continue
+        try:
+            text = pyproject.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if _PYPROJECT_NAME_PATTERN.search(text):
+            return candidate
+    return None
+
+
+def default_venv_dir(*, repo_root: Path | None = None) -> Path:
+    """Return the default dedicated virtual environment path.
+
+    Prefers ``<repo>/.venv`` when this module lives inside a copilot-status-ring
+    clone (the slash command and ``install.sh`` always run from a clone). Falls
+    back to a user-level path under :func:`default_state_dir` otherwise — for
+    example, when ``copilot-command-ring`` was pip-installed standalone.
+    """
+    root = repo_root if repo_root is not None else find_repo_root()
+    if root is not None:
+        return root / ".venv"
     return default_state_dir() / ".venv"
+
+
+def default_package_spec(*, repo_root: Path | None = None) -> str:
+    """Return the default pip install spec for the wizard.
+
+    Prefers the local clone path (so ``pip install <repo_root>`` runs offline
+    against your working tree) when a clone is detected. Falls back to the
+    GitHub URL in :data:`PACKAGE_SPEC_DEFAULT` otherwise.
+    """
+    root = repo_root if repo_root is not None else find_repo_root()
+    if root is not None:
+        return str(root)
+    return PACKAGE_SPEC_DEFAULT
 
 
 def venv_python_path(venv_dir: Path, *, os_name: str | None = None) -> Path:
@@ -283,7 +335,7 @@ def build_setup_plan(
     selections: WizardSelections,
     *,
     venv_dir: Path | None = None,
-    package_spec: str = PACKAGE_SPEC_DEFAULT,
+    package_spec: str | None = None,
     base_python: Path | None = None,
 ) -> SetupPlan:
     """Create a deterministic setup plan from validated selections."""
@@ -293,6 +345,7 @@ def build_setup_plan(
     venv_python = venv_python_path(chosen_venv)
     base_python_path = base_python or Path(sys.executable)
     force_flag = ("--force",) if selections.force_hooks else ()
+    resolved_package_spec = package_spec if package_spec else default_package_spec()
 
     if selections.scope == SCOPE_GLOBAL:
         hook_command = CommandStep(
@@ -330,7 +383,7 @@ def build_setup_plan(
                 "pip",
                 "install",
                 "--upgrade",
-                package_spec,
+                resolved_package_spec,
             ),
         ),
         hook_command=hook_command,
@@ -593,12 +646,20 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--venv-dir",
-        help="Override the dedicated setup virtual environment path",
+        help=(
+            "Override the dedicated setup virtual environment path "
+            "(defaults to <repo>/.venv when run from a copilot-status-ring "
+            "checkout, else a user-level path under the platform state dir)"
+        ),
     )
     parser.add_argument(
         "--package-spec",
-        default=PACKAGE_SPEC_DEFAULT,
-        help="Package spec to install into the setup venv",
+        default=None,
+        help=(
+            "Package spec to install into the setup venv "
+            "(defaults to the local clone path when run from a copilot-status-ring "
+            "checkout, else the GitHub URL)"
+        ),
     )
     parser.add_argument(
         "--skip-install",

@@ -85,10 +85,10 @@ cd copilot-status-ring
 ./install.sh
 ```
 
-The installer creates a dedicated user-level virtual environment, installs the
-host bridge, installs global hooks, prepares CircuitPython firmware files, and
-runs a dry-run validation. It does not depend on `copilot-command-ring` already
-being on `PATH`.
+The installer creates `<repo>/.venv` inside the clone, installs the host
+bridge from your local checkout (no network install), installs global hooks,
+prepares CircuitPython firmware files, and runs a dry-run validation. It does
+not depend on `copilot-command-ring` already being on `PATH`.
 
 Useful options:
 
@@ -98,7 +98,7 @@ Useful options:
 ./install.sh --repo ~/code/my-project
 ```
 
-Manual fallback: create a venv, run `pip install git+https://github.com/spencerbk/copilot-status-ring.git`, then run `copilot-command-ring setup`.
+Manual fallback: clone the repo, create `.venv` inside it (`python3 -m venv .venv && source .venv/bin/activate`), run `pip install .`, then run `copilot-command-ring setup`.
 
 ---
 

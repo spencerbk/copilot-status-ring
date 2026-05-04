@@ -67,19 +67,38 @@ py -3 --version
 
 ## 2. Install the host bridge
 
-> **Recommended:** Create a virtual environment to isolate dependencies:
->
-> ```powershell
-> py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1
-> ```
->
-> Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
->
-> The hook install commands in step 6 record the Python path so hooks work even outside the venv.
+> **Recommended:** Run the `/setup-status-ring` slash command from inside this
+> repo when it's open in Copilot CLI. The wizard creates `.venv` next to the
+> clone, installs the host bridge from local source, and deploys global hooks
+> in one step. See [`docs/setup-status-ring.md`](setup-status-ring.md).
+
+<details>
+<summary><strong>Manual install (advanced)</strong></summary>
+
+If you'd rather run the steps yourself, clone the repo and create a venv inside
+it first:
+
+```powershell
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1
+```
+
+Once the venv is active, use `python` and `pip` directly — the `py` launcher
+bypasses the venv. The hook install commands in step 6 record the Python path
+so hooks work even outside the venv.
+
+```powershell
+pip install .
+```
+
+Or install from the GitHub URL into any environment:
 
 ```powershell
 pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
+
+</details>
 
 Verify:
 
