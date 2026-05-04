@@ -6,12 +6,12 @@ setlocal EnableDelayedExpansion
 ::
 :: Double-click to open a Windows Terminal window for this repo.
 ::
-:: To use in another repo: copy this file to <repo>\scripts\
-:: and change only TAB_COLOR below.
+:: To use in another repo: copy this file to <repo>\scripts\.
+:: Optional local override: <repo>\.copilot-launcher.env with TAB_COLOR=#RRGGBB.
 :: ============================================================
 
 :: -----------------------------------------------------------
-:: User-configurable: tab color (hex). Change per repo.
+:: Deploy-provided default tab color (hex).
 :: -----------------------------------------------------------
 set "TAB_COLOR=#787878"
 
@@ -20,6 +20,16 @@ set "TAB_COLOR=#787878"
 :: -----------------------------------------------------------
 for %%I in ("%~dp0..") do set "REPO_DIR=%%~fI"
 for %%I in ("%~dp0..") do set "REPO_NAME=%%~nxI"
+
+:: -----------------------------------------------------------
+:: Repo-local override (optional; exact TAB_COLOR=#RRGGBB lines only)
+:: -----------------------------------------------------------
+set "LAUNCHER_ENV=%REPO_DIR%\.copilot-launcher.env"
+if exist "%LAUNCHER_ENV%" (
+    for /f "usebackq tokens=1,* delims==" %%A in (`findstr /R /C:"^TAB_COLOR=#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]$" "%LAUNCHER_ENV%"`) do (
+        if "%%A"=="TAB_COLOR" set "TAB_COLOR=%%B"
+    )
+)
 
 :: -----------------------------------------------------------
 :: Auto-install WT fragment on first run (idempotent)

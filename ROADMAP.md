@@ -57,8 +57,10 @@ Make installation easier for end users.
 
 | Item | Status | Description |
 |------|--------|-------------|
+| macOS/Linux installer | ✅ Done | `./install.sh` bootstraps a repo-local `.venv` inside the clone, installs the host bridge from local source, runs the setup wizard, installs hooks, prepares firmware files, and avoids relying on `copilot-command-ring` being on `PATH` |
 | pip install from Git | ✅ Done | `pip install git+https://github.com/spencerbk/copilot-status-ring.git` installs the host bridge and CLI |
-| Global hooks CLI | ✅ Done | `copilot-command-ring setup` deploys hooks to `~/.copilot/hooks/` (one-time, all repos) |
+| Global hooks CLI | ✅ Done | `copilot-command-ring setup` deploys hooks to `~/.copilot/hooks/` by default, or `$COPILOT_HOME/hooks/` when `COPILOT_HOME` is set (one-time, all repos) |
+| Windows PowerShell installer | Planned | Add `install.ps1` with Windows-native Python discovery, venv creation, package install, COM-port guidance, CircuitPython drive detection, and safe delegation to the same Python setup wizard used by `install.sh` |
 | PyPI publishing | Planned | Publish to PyPI so users can `pip install copilot-command-ring` without the Git URL |
 | Prebuilt standalone binaries | Planned | Single-file executables for Windows, macOS, and Linux (no Python install required) |
 
@@ -72,7 +74,7 @@ Areas where the current implementation is intentionally pragmatic and may warran
 |-----|-------------|
 | Automated firmware regression tests | CircuitPython and MicroPython firmware logic (state machine, session tracker, stale-idle behavior) has no test harness in this repo. Changes are validated by static analysis (Ruff + Pyright) and manual hardware testing only. A host-side simulator or split-out pure-Python tracker module could enable pytest coverage without a real MCU. |
 | Firmware-hang surfacing | Partially addressed. Firmware now includes a 10-minute serial-silence watchdog that triggers `supervisor.reload()` when active sessions exist but no host bytes arrive, recovering from wedged USB CDC channels (common on Windows selective suspend). The host also surfaces a one-shot stderr WARNING after 3 consecutive send failures. A true host→ring heartbeat with reconnect/resync still requires a persistent host daemon (see below). |
-| USB disconnect/reconnect UX | When the ring is physically unplugged mid-session, the host logs a serial error and the hook exits silently. There is no visible host-side indicator that the ring has gone offline, and no automatic state resync when it returns. The 3-failures stderr WARNING is a minimal surface; a richer UX depends on a persistent host process. |
+| USB disconnect/reconnect UX | When the ring is physically unplugged mid-session, the host logs serial errors at `DEBUG` level, skips failed sends without blocking Copilot CLI, and emits a one-shot stderr WARNING after three consecutive failures. There is still no automatic state resync when the ring returns; richer reconnect UX depends on a persistent host process. |
 | Persistent host daemon with heartbeat | Deferred. A long-running host daemon could send periodic heartbeats, detect ring disconnection, and resync session state on reconnect. Currently blocked on zero-touch auto-start across Windows / macOS / Linux — the project's constraint is that no user action beyond the initial install is required. Revisit when platform-agnostic auto-start (launchd / systemd user units / Windows Task Scheduler) can be scripted as part of `install.ps1` / `install.sh`. |
 | VS Code-compatible hook aliases | The host bridge currently targets Copilot CLI hook names and camelCase payloads. If VS Code agent-hook compatibility is added later, extend normalization to accept the alternate event aliases and payload shapes, then update tests and hook documentation together so CLI support remains the primary baseline. |
 

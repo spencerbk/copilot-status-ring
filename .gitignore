@@ -17,7 +17,11 @@ build/
 .idea/
 
 # Copilot/agent config (managed elsewhere)
-.github/
+.github/*
+!.github/extensions/
+.github/extensions/*
+!.github/extensions/setup-status-ring/
+!.github/extensions/setup-status-ring/extension.mjs
 
 # OS
 .DS_Store

@@ -67,19 +67,38 @@ py -3 --version
 
 ## 2. Install the host bridge
 
-> **Recommended:** Create a virtual environment to isolate dependencies:
->
-> ```powershell
-> py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1
-> ```
->
-> Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
->
-> The hook install commands in step 6 record the Python path so hooks work even outside the venv.
+> **Recommended:** Run the `/setup-status-ring` slash command from inside this
+> repo when it's open in Copilot CLI. The wizard creates `.venv` next to the
+> clone, installs the host bridge from local source, and deploys global hooks
+> in one step. See [`docs/setup-status-ring.md`](setup-status-ring.md).
+
+<details>
+<summary><strong>Manual install (advanced)</strong></summary>
+
+If you'd rather run the steps yourself, clone the repo and create a venv inside
+it first:
+
+```powershell
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1
+```
+
+Once the venv is active, use `python` and `pip` directly — the `py` launcher
+bypasses the venv. The hook install commands in step 6 record the Python path
+so hooks work even outside the venv.
+
+```powershell
+pip install .
+```
+
+Or install from the GitHub URL into any environment:
 
 ```powershell
 pip install git+https://github.com/spencerbk/copilot-status-ring.git
 ```
+
+</details>
 
 Verify:
 
@@ -161,20 +180,26 @@ Use MicroPython instead of CircuitPython if you prefer the MicroPython ecosystem
 2. Put your board into bootloader mode (double-tap reset on RP2040 boards).
 3. Drag the `.uf2` file onto the boot drive that appears (e.g. `RPI-RP2`).
 4. The board reboots. Install `mpremote` if it is not already available:
+
    ```powershell
    pip install mpremote
    ```
+
 5. Install the USB CDC library:
+
    ```powershell
    mpremote mip install usb-device-cdc
    ```
+
 6. Copy the firmware files:
+
    ```powershell
    mpremote cp firmware/micropython/boot.py :boot.py
    mpremote cp firmware/micropython/ring_cdc.py :ring_cdc.py
    mpremote cp firmware/micropython/neopixel_compat.py :neopixel_compat.py
    mpremote cp firmware/micropython/main.py :main.py
    ```
+
 7. If your board does not wire NeoPixel data to GPIO 6 by default (for example QT Py RP2040 or ESP32 variants), edit `main.py` and set `NEOPIXEL_PIN` to the correct GPIO number before resetting. Then reset the board. The ring should show a magenta wipe animation on startup.
 
 > **Note:** After the first boot with `boot.py`, the board creates a second CDC channel. Unplug and replug the board — the COM port number may change. See [`firmware/micropython/README.md`](../firmware/micropython/README.md) for board-specific details.
@@ -189,7 +214,7 @@ Use MicroPython instead of CircuitPython if you prefer the MicroPython ecosystem
 copilot-command-ring setup
 ```
 
-This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. The hooks record the path to your current Python, so they work even when the venv isn't active.
+This installs hooks to `%USERPROFILE%\.copilot\hooks` by default, or `%COPILOT_HOME%\hooks` when `COPILOT_HOME` is set, so the ring works in **every** repository automatically. The hooks record the path to your current Python, so they work even when the venv isn't active.
 
 > **Note:** If you recreate the virtual environment or install on a new machine, re-run `copilot-command-ring setup --force` to update the recorded Python path.
 
@@ -215,7 +240,7 @@ python -m copilot_command_ring.simulate --dry-run
 
 This sends a sequence of test events and prints the serial messages that *would* be sent. You should see JSON Lines like:
 
-```
+```text
 {"event":"sessionStart","state":"session_start","source":"new","ttl_s":60,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 {"event":"preToolUse","state":"working","tool":"bash","ttl_s":300,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ...

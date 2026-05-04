@@ -49,6 +49,16 @@ def main(argv: list[str] | None = None) -> None:
         help="Overwrite existing hook files without prompting",
     )
 
+    # ── setup-status-ring / wizard ──────────────────────────────────────
+    setup_status_parser = sub.add_parser(
+        "setup-status-ring",
+        aliases=["wizard"],
+        help="Guided setup for new Copilot Command Ring users",
+    )
+    from .setup_wizard import add_arguments as add_setup_status_arguments
+
+    add_setup_status_arguments(setup_status_parser)
+
     # ── hook ───────────────────────────────────────────────────────────
     hook_parser = sub.add_parser(
         "hook",
@@ -79,6 +89,12 @@ def main(argv: list[str] | None = None) -> None:
         from .hook_main import main as hook_main
 
         hook_main()
+
+    elif args.command in {"setup-status-ring", "wizard"}:
+        from .setup_wizard import run_setup_status_ring_from_args
+
+        ok = run_setup_status_ring_from_args(args)
+        sys.exit(0 if ok else 1)
 
     else:
         parser.print_help()

@@ -38,32 +38,67 @@ For the shortest path to a working ring, start with this stack:
 | Area | Recommended choice | Why |
 |------|--------------------|-----|
 | Firmware | **CircuitPython** | Broadest board auto-detection and easiest drag-and-drop setup |
-| Hooks | **Global setup** with `copilot-command-ring setup` | One install works in every repo |
+| Hooks | **One-command installer** on macOS/Linux, or global setup on Windows | One install works in every repo |
 | Hardware | 24-pixel NeoPixel ring powered from the board's USB 5V pin | Matches the project defaults and stays low-current at default brightness |
 | Config | Start with auto-detect; set `COPILOT_RING_PORT` only if needed | Most boards are found automatically |
 
 The steps below follow this path. Once the ring works, use the configuration and firmware docs to customize brightness, pixel count, idle behavior, or a different firmware runtime.
 
-### 1. Install the host bridge
+### 1. Run the installer
 
-> **Recommended:** Use a virtual environment to isolate dependencies.
->
-> **macOS / Linux:** `python3 -m venv .venv && source .venv/bin/activate`
-> **Windows:** `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`
->
-> Once the venv is active, use `python` and `pip` directly — the `py` launcher bypasses the venv.
+**macOS / Linux (recommended):**
 
-```
-pip install git+https://github.com/spencerbk/copilot-status-ring.git
-```
-
-Or from a local clone:
-
-```
+```bash
 git clone https://github.com/spencerbk/copilot-status-ring.git
 cd copilot-status-ring
-pip install .
+./install.sh
 ```
+
+The installer creates a `.venv` inside the cloned repo, installs the host
+bridge from your local checkout (no network install), installs global Copilot
+CLI hooks, prepares the default Raspberry Pi Pico / CircuitPython firmware
+files, and runs a dry-run validation. It does **not** require
+`copilot-command-ring` to already be on `PATH`.
+
+If your `CIRCUITPY` drive is already mounted, the installer can copy `boot.py`
+and `code.py` there when you approve it. Otherwise it leaves prepared firmware
+files under your user-level setup directory and prints the copy location.
+
+**Windows / Copilot CLI guided setup:**
+
+> If this repo is open in Copilot CLI, run `/setup-status-ring` for an
+> interactive setup wizard. The slash command creates `<repo>/.venv` if it
+> doesn't already exist, installs the host bridge from your local clone, asks
+> whether hooks should apply globally or to one repo, prompts for
+> board/runtime/pin choices, and attempts safe device detection before any
+> firmware write. See [`docs/setup-status-ring.md`](docs/setup-status-ring.md).
+
+<details>
+<summary><strong>Manual install (advanced)</strong></summary>
+
+The wizard handles venv creation and package install for you. If you'd rather
+do it yourself — for example, to install into an existing Python environment —
+run from a local clone:
+
+```bash
+git clone https://github.com/spencerbk/copilot-status-ring.git
+cd copilot-status-ring
+python3 -m venv .venv          # macOS / Linux
+# or: py -3 -m venv .venv       # Windows
+. .venv/bin/activate           # macOS / Linux
+# or: .\.venv\Scripts\Activate.ps1  # Windows
+pip install .
+copilot-command-ring setup
+```
+
+Or pip-install from the GitHub URL into any environment:
+
+```bash
+pip install git+https://github.com/spencerbk/copilot-status-ring.git
+copilot-command-ring setup
+```
+
+</details>
 
 ### 2. Flash firmware
 
@@ -83,8 +118,13 @@ pip install .
 **CircuitPython (recommended):**
 
 1. Install [CircuitPython](https://circuitpython.org/downloads) on your board.
-2. Copy `firmware/circuitpython/boot.py` and `firmware/circuitpython/code.py` to the `CIRCUITPY` drive.
-3. Install the `neopixel` library from the [Adafruit CircuitPython Bundle](https://circuitpython.org/libraries) into `CIRCUITPY/lib/`.
+2. Copy `boot.py` and `code.py` to the `CIRCUITPY` drive. If you ran
+   `./install.sh`, use the prepared files it reported; otherwise use
+   `firmware/circuitpython/boot.py` and `firmware/circuitpython/code.py`.
+3. Install the `neopixel` library into `CIRCUITPY/lib/`. When `./install.sh`
+   writes directly to `CIRCUITPY`, it attempts this automatically with `circup`;
+   otherwise install `neopixel.mpy` from the
+   [Adafruit CircuitPython Bundle](https://circuitpython.org/libraries).
 
 See [`firmware/circuitpython/README.md`](firmware/circuitpython/README.md) for pin auto-detection details and board-specific notes.
 
@@ -112,21 +152,27 @@ You can activate the ring **globally** (works in every repo) or **per-repo**. Gl
 
 **One-time global setup (recommended):**
 
-```
+```bash
 copilot-command-ring setup
 ```
 
-This installs hooks to `~/.copilot/hooks/` so the ring works in **every** repository automatically. The hooks record the current Python path, so they work even when the venv isn't active.
+This is already handled by `./install.sh`. If you installed manually, this
+installs hooks to `~/.copilot/hooks/` by default, or `$COPILOT_HOME/hooks/` when
+`COPILOT_HOME` is set, so the ring works in **every** repository automatically.
+The hooks record the current Python path, so they work even when the venv isn't
+active.
 
 **Or per-repo deploy (alternative):**
 
-```
+```bash
 copilot-command-ring deploy <path-to-repo>
 ```
 
 This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. Repeat for each repo where you want the ring active.
 
-> **Note:** If you recreate the virtual environment or install on a new machine, re-run `setup --force` or `deploy <path> --force` to update the recorded Python path.
+> **Note:** If you recreate the virtual environment or move the clone, re-run
+> `/setup-status-ring` (or `./install.sh --yes`) to refresh the hook scripts —
+> they embed the absolute path to the venv's Python.
 >
 > **Tip:** The hooks auto-detect your board by USB serial description. If auto-detect picks the wrong port or finds nothing, set `COPILOT_RING_PORT` explicitly.
 
@@ -143,11 +189,12 @@ This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run
 
 ## How It Works
 
-```
+```text
 Copilot CLI
     │
     ▼
-~/.copilot/hooks/           (global — works in all repos)
+$COPILOT_HOME/hooks/
+or ~/.copilot/hooks/        (global — works in all repos)
 or .github/hooks/           (per-repo — optional additional install)
     │
     ▼
@@ -227,6 +274,8 @@ Create `.copilot-command-ring.local.json` in the repo root (git-ignored):
 
 The serial port is auto-detected by default. Add `"serial_port": "COM7"` only if auto-detection doesn't find your board.
 
+Auto-detection compares each serial device description against `device_match.description_contains` using case-insensitive substring matches, then prefers the highest USB interface number when multiple matching ports share a VID/PID. Narrow `description_contains` when another serial device is selected; use `serial_port` when you want a fixed override.
+
 `idle_mode` controls what the ring does when every Copilot session has ended or gone silent:
 
 | Value | Behavior |
@@ -273,9 +322,10 @@ The serial protocol uses JSON Lines — one JSON object per line over USB serial
 
 ## Project Structure
 
-```
+```text
 copilot-status-ring/
-├─ .github/hooks/                    # Copilot CLI hook config + wrapper scripts
+├─ .github/extensions/setup-status-ring/  # Copilot CLI setup wizard extension
+├─ install.sh                         # macOS/Linux one-command installer
 ├─ host/copilot_command_ring/        # Python host bridge
 │  ├─ cli.py                         #   CLI entry point (setup, deploy, hook)
 │  ├─ deploy.py                      #   Hook deployment to target repos
@@ -297,36 +347,40 @@ copilot-status-ring/
 └─ requirements.txt
 ```
 
+Per-repo hooks are generated by `copilot-command-ring deploy` under the target repository's `.github/hooks/` directory; they are not committed in this repo by default.
+
 ## Development
 
 ### Install dev dependencies
 
-```
+```bash
 git clone https://github.com/spencerbk/copilot-status-ring.git
 cd copilot-status-ring
 ```
 
-Create a venv (macOS / Linux: `python3 -m venv .venv && source .venv/bin/activate` · Windows: `py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1`), then:
+Create `.venv` inside the clone (or let `/setup-status-ring` / `./install.sh` do it for you), then install with the dev extras:
 
-```
+```bash
+python3 -m venv .venv && source .venv/bin/activate    # macOS / Linux
+# or: py -3 -m venv .venv; .\.venv\Scripts\Activate.ps1  # Windows
 pip install -e ".[dev]"
 ```
 
 ### Run tests
 
-```
+```bash
 python -m pytest tests/ -v
 ```
 
 ### Lint
 
-```
+```bash
 python -m ruff check host/ tests/
 ```
 
 ### Simulate hook events (no hardware needed)
 
-```
+```bash
 python -m copilot_command_ring.simulate --dry-run
 ```
 
@@ -344,7 +398,7 @@ Common issues and solutions are documented in [`docs/troubleshooting.md`](docs/t
 Quick checks:
 
 - **Ring not responding?** Verify the serial port with `COPILOT_RING_LOG_LEVEL=DEBUG` and check the connection.
-- **No hooks firing?** Run `copilot-command-ring setup` (global) or `copilot-command-ring deploy <path>` (per-repo). See [Quick Start](#quick-start) step 3.
+- **No hooks firing?** On macOS/Linux, run `./install.sh` from a local clone. For manual installs, run `copilot-command-ring setup` (global) or `copilot-command-ring deploy <path>` (per-repo). See [Quick Start](#quick-start) step 3.
 - **Permission errors?** Linux: add your user to the `dialout` group. macOS: check `/dev/tty.*` permissions.
 - **Multiple sessions?** Fully supported across all three firmware variants. The ring shows the highest-priority state across all active sessions. Stale sessions are pruned after 5 minutes.
 

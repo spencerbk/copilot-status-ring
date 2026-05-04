@@ -1,0 +1,8 @@
+{
+  "config": {
+    // Existing docs intentionally use long paths, CLI commands, and compact
+    // hardware tables that are clearer without arbitrary wrapping.
+    "MD013": false,
+    "MD060": false
+  }
+}
