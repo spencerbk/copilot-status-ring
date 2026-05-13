@@ -64,6 +64,14 @@ To override: edit `NEOPIXEL_PIN` at the top of `main.py`:
 NEOPIXEL_PIN = 18  # example: use your board's GPIO number
 ```
 
+## Ring size
+
+The 24-LED Adafruit NeoPixel Ring (product 1586) is the default, but the 16-LED ring (product 1463) and the 12-LED ring (product 1643) are first-class targets too. The host bridge sends `pixel_count` to the firmware in every message and the firmware applies it at runtime — animations (including the working spinner) auto-scale to the ring you wired.
+
+The simplest way to set the value is the `setup-status-ring` wizard, which prompts for 24 / 16 / 12 and writes the choice into `.copilot-command-ring.local.json`. You can also set `pixel_count` directly in that file or `COPILOT_RING_PIXEL_COUNT` in the environment.
+
+`NUM_PIXELS = 24` at the top of `main.py` is the *startup* default used only for the boot wipe before the first host message arrives. For a perfectly clean wipe on a 16- or 12-LED ring, edit it to match before flashing.
+
 ## Differences from CircuitPython
 
 - Uses `micropython-lib`'s `usb-device-cdc` instead of built-in `usb_cdc`

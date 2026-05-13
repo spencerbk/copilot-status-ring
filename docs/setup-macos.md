@@ -276,8 +276,18 @@ export COPILOT_RING_LOG_LEVEL=DEBUG
 | `COPILOT_RING_PORT` | Auto-detect | Set to `/dev/cu.usbmodem14201` or another device path if auto-detect selects the wrong device |
 | `COPILOT_RING_BAUD` | `115200` | Serial baud rate; CircuitPython's USB CDC data channel is speed-independent |
 | `COPILOT_RING_BRIGHTNESS` | `0.04` | LED brightness from `0.0` to `1.0` |
-| `COPILOT_RING_PIXEL_COUNT` | `24` | Active LED count |
+| `COPILOT_RING_PIXEL_COUNT` | `24` | Active LED count. Easiest path: pick 24 / 16 / 12 in `setup-status-ring`; alternatively set this env var or `pixel_count` in `.copilot-command-ring.local.json`. The firmware auto-scales animations to whichever ring you wire up — see [Smaller rings](#smaller-rings) below |
 | `COPILOT_RING_LOG_LEVEL` | `WARNING` | Use `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 | `COPILOT_RING_DRY_RUN` | `false` | Set to `1`, `true`, or `yes` to skip serial sends |
 | `COPILOT_RING_LOCK_TIMEOUT` | `1.0` | Seconds to wait for the multi-session serial lock |
 | `COPILOT_HOME` | `~/.copilot` | Optional Copilot CLI home override; global setup installs hooks under `$COPILOT_HOME/hooks` |
+
+---
+
+## Smaller rings
+
+The 24-LED Adafruit NeoPixel Ring (product 1586) is the project default, but the 16-LED ring (product 1463) and the 12-LED ring (product 1643) are first-class targets too.
+
+- **Easiest:** rerun `setup-status-ring` and pick 24, 16, or 12 at the *Which ring size do you have?* prompt. The wizard writes `pixel_count` into `.copilot-command-ring.local.json` for you.
+- **Manually:** set `COPILOT_RING_PIXEL_COUNT` or edit `pixel_count` in your local JSON config. The host bridge sends the value to the firmware on every message and the firmware applies it at runtime — animations auto-scale.
+- **Clean startup wipe:** the firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT` (Arduino) is `24`, used only for the boot wipe before the first host message arrives. On a smaller ring the wipe still works, but for a perfectly clean boot animation, edit that constant in the firmware to match your ring before flashing.

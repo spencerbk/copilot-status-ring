@@ -164,6 +164,18 @@ async function collectSelections(session) {
     });
     if (dataPin === null) return null;
 
+    const pixelOptions = [
+        { label: "24 LEDs — Adafruit NeoPixel Ring 24 (product 1586)", value: 24 },
+        { label: "16 LEDs — Adafruit NeoPixel Ring 16 (product 1463)", value: 16 },
+        { label: "12 LEDs — Adafruit NeoPixel Ring 12 (product 1643)", value: 12 },
+    ];
+    const pixelLabel = await session.ui.select(
+        "Which ring size do you have?",
+        pixelOptions.map((option) => option.label),
+    );
+    if (!pixelLabel) return null;
+    const pixelCount = pixelOptions.find((option) => option.label === pixelLabel).value;
+
     const autoDetectPort = await session.ui.confirm(
         "Attempt host USB serial auto-detection before setup?",
     );
@@ -203,6 +215,7 @@ async function collectSelections(session) {
         approve_firmware: approveFirmware,
         firmware_target: firmwareTarget,
         force_hooks: true,
+        pixel_count: pixelCount,
     };
 }
 

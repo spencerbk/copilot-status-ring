@@ -35,7 +35,7 @@ NUM_PIXELS = 24
 BRIGHTNESS = 0.04  # keep low to avoid blinding / power issues
 BRIGHTNESS_BOOST = 0.02  # extra brightness for dim states (breathing)
 PIXEL_ORDER = neopixel.GRB
-SPINNER_WIDTH = 6  # number of LEDs in the spinner segment
+SPINNER_WIDTH = 6  # baseline spinner segment; runtime default auto-scales as max(2, num_pixels // 4)
 LOOP_DELAY = 0.02  # ~50 fps
 SERIAL_BUF_MAX = 512  # discard buffer if no newline within this many bytes
 WATCHDOG_TIMEOUT = 8  # keep longer than normal render loop latency
@@ -93,7 +93,7 @@ STATE_MAP = {
     "working":             (
         "spinner",
         COLOR_WORKING,
-        {"width": SPINNER_WIDTH, "period": 1.0},
+        {"period": 1.0},
     ),
     "tool_ok":             ("flash",     COLOR_TOOL_OK,       {"duration": 0.3}),
     "tool_error":          ("flash",     COLOR_TOOL_ERROR,    {"duration": 0.3}),
@@ -265,7 +265,8 @@ class StatusRing:
         elif anim_name == "blink":
             self._anim_blink(color, elapsed, kwargs.get("period", 0.6))
         elif anim_name == "spinner":
-            self._anim_spinner(color, elapsed, kwargs.get("width", SPINNER_WIDTH),
+            self._anim_spinner(color, elapsed,
+                               kwargs.get("width", max(2, self.num_pixels // 4)),
                                kwargs.get("period", 1.0))
         elif anim_name == "wipe":
             self._anim_wipe(color, elapsed, kwargs.get("duration", 0.8))

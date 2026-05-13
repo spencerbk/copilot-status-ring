@@ -25,6 +25,7 @@ from .boards import (
     options_payload,
 )
 from .config import Config
+from .constants import CONFIG_FILE_NAME, DEFAULT_PIXEL_COUNT
 from .detect_ports import detect_serial_port
 from .firmware_install import (
     FirmwareInstallError,
@@ -65,6 +66,7 @@ class WizardSelections:
     approve_firmware: bool = False
     firmware_target: Path | None = None
     force_hooks: bool = True
+    pixel_count: int = DEFAULT_PIXEL_COUNT
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-serializable representation."""
@@ -80,6 +82,7 @@ class WizardSelections:
                 str(self.firmware_target) if self.firmware_target is not None else None
             ),
             "force_hooks": self.force_hooks,
+            "pixel_count": self.pixel_count,
         }
 
 
@@ -158,6 +161,7 @@ class SetupResult:
     firmware_written: tuple[Path, ...] = ()
     firmware_prepared_dir: Path | None = None
     firmware_warnings: tuple[str, ...] = ()
+    config_written: Path | None = None
 
 
 def default_state_dir(
@@ -246,6 +250,32 @@ def _bool_value(value: object, *, default: bool = False) -> bool:
     return default
 
 
+def _coerce_pixel_count(value: object) -> int:
+    """Validate and coerce a wizard-input pixel count.
+
+    Accepts ``None`` / missing (default to ``DEFAULT_PIXEL_COUNT``), positive
+    integers, and integer-valued strings. Rejects booleans, non-positive
+    values, and anything else.
+    """
+    if value is None or value == "":
+        return DEFAULT_PIXEL_COUNT
+    if isinstance(value, bool):
+        raise SetupWizardError(
+            f"pixel_count must be a positive integer, got {value!r}"
+        )
+    try:
+        coerced = int(value)
+    except (TypeError, ValueError) as exc:
+        raise SetupWizardError(
+            f"pixel_count must be a positive integer, got {value!r}"
+        ) from exc
+    if coerced <= 0:
+        raise SetupWizardError(
+            f"pixel_count must be a positive integer, got {value!r}"
+        )
+    return coerced
+
+
 def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
     """Validate and convert extension/JSON input into ``WizardSelections``."""
     scope = str(data.get("scope", SCOPE_GLOBAL)).strip().lower()
@@ -262,6 +292,7 @@ def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
     firmware_target = Path(str(target_value)).expanduser() if target_value else None
     pin_value = data.get("data_pin")
     data_pin = str(pin_value).strip() if pin_value not in (None, "") else None
+    pixel_count = _coerce_pixel_count(data.get("pixel_count"))
 
     return WizardSelections(
         scope=scope,
@@ -273,6 +304,7 @@ def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
         approve_firmware=_bool_value(data.get("approve_firmware"), default=False),
         firmware_target=firmware_target,
         force_hooks=_bool_value(data.get("force_hooks"), default=True),
+        pixel_count=pixel_count,
     )
 
 
@@ -402,6 +434,53 @@ def build_setup_plan(
     )
 
 
+def _resolve_local_config_path(selections: WizardSelections) -> Path:
+    """Return the .copilot-command-ring.local.json path for the chosen scope.
+
+    Global scope writes to ``~/<CONFIG_FILE_NAME>`` so the host bridge picks
+    it up on any subsequent invocation under the user's home tree. Repo
+    scope writes to ``<repo>/<CONFIG_FILE_NAME>`` so it travels with the
+    repository.
+    """
+    if selections.scope == SCOPE_REPO:
+        assert selections.repo_path is not None
+        return selections.repo_path.expanduser().resolve() / CONFIG_FILE_NAME
+    return _user_home() / CONFIG_FILE_NAME
+
+
+def _user_home() -> Path:
+    """Indirection over ``Path.home()`` so tests can isolate the global path."""
+    return Path.home()
+
+
+def _write_local_config(selections: WizardSelections) -> Path | None:
+    """Persist the wizard's pixel_count to the local JSON config file.
+
+    Merge semantics: if the target file already exists and parses as a JSON
+    object, its existing fields are preserved and only ``pixel_count`` is
+    overwritten. Returns the path that was written, or ``None`` when the
+    wizard chose to skip (default pixel count + no existing file).
+    """
+    target = _resolve_local_config_path(selections)
+    existing: dict[str, object] = {}
+    file_existed = target.is_file()
+    if file_existed:
+        try:
+            data = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = None
+        if isinstance(data, dict):
+            existing = data
+
+    if selections.pixel_count == DEFAULT_PIXEL_COUNT and not file_existed:
+        return None
+
+    existing["pixel_count"] = selections.pixel_count
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
+    return target
+
+
 def _run_checked(command: Sequence[str]) -> None:
     subprocess.run(list(command), check=True)
 
@@ -494,12 +573,14 @@ def execute_setup_plan(
                 )
 
     runner(plan.validation_command.command)
+    config_written = _write_local_config(plan.selections)
     return SetupResult(
         plan=plan,
         detected_port=detected_port,
         firmware_written=firmware_written,
         firmware_prepared_dir=prepared_dir,
         firmware_warnings=firmware_warnings,
+        config_written=config_written,
     )
 
 
@@ -574,6 +655,17 @@ def prompt_for_selections() -> WizardSelections:
         pin_prompt += f" [{runtime_meta.default_pin}]"
     data_pin = input(f"{pin_prompt}: ").strip() or runtime_meta.default_pin
 
+    pixel_choice = _choose(
+        "Which ring size do you have?",
+        (
+            ("24", "24 LEDs — Adafruit NeoPixel Ring 24 (product 1586)"),
+            ("16", "16 LEDs — Adafruit NeoPixel Ring 16 (product 1463)"),
+            ("12", "12 LEDs — Adafruit NeoPixel Ring 12 (product 1643)"),
+        ),
+        default=str(DEFAULT_PIXEL_COUNT),
+    )
+    pixel_count = int(pixel_choice)
+
     auto_detect = _confirm("Attempt host USB serial auto-detection?", default=True)
     firmware_target = None
     approve = False
@@ -603,6 +695,7 @@ def prompt_for_selections() -> WizardSelections:
         approve_firmware=approve,
         firmware_target=firmware_target,
         force_hooks=True,
+        pixel_count=pixel_count,
     )
 
 
@@ -714,6 +807,12 @@ def run_setup_status_ring_from_args(args: argparse.Namespace) -> bool:
         elif selections.approve_firmware:
             print(
                 "Firmware was prepared; follow the manual runtime steps if needed.",
+                file=sys.stderr,
+            )
+        if result.config_written is not None:
+            print(
+                f"Wrote ring config: {result.config_written} "
+                f"(pixel_count={selections.pixel_count})",
                 file=sys.stderr,
             )
         return True

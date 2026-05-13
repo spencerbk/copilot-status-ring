@@ -2,7 +2,7 @@
 
 **A physical NeoPixel status ring for developers using GitHub Copilot CLI.**
 
-Copilot Command Ring turns an [Adafruit NeoPixel Ring (24 RGB LEDs)](https://www.adafruit.com/product/1586) into a glanceable activity indicator for the Copilot CLI agent. Native Copilot CLI hooks drive the ring directly: it lights up while the agent is thinking, flashes on tool success or failure, pulses while waiting for user input or permission, and settles into an idle breathing animation when the session ends — no terminal scraping required.
+Copilot Command Ring turns an [Adafruit NeoPixel Ring](https://www.adafruit.com/product/1586) into a glanceable activity indicator for the Copilot CLI agent. The 24-LED ring (product 1586) and the 16-LED ring (product 1463) are both first-class targets — pick whichever you have. Native Copilot CLI hooks drive the ring directly: it lights up while the agent is thinking, flashes on tool success or failure, pulses while waiting for user input or permission, and settles into an idle breathing animation when the session ends — no terminal scraping required.
 
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![CircuitPython](https://img.shields.io/badge/firmware-CircuitPython-blueviolet)
@@ -39,7 +39,7 @@ For the shortest path to a working ring, start with this stack:
 |------|--------------------|-----|
 | Firmware | **CircuitPython** | Broadest board auto-detection and easiest drag-and-drop setup |
 | Hooks | **One-command installer** on macOS/Linux, or global setup on Windows | One install works in every repo |
-| Hardware | 24-pixel NeoPixel ring powered from the board's USB 5V pin | Matches the project defaults and stays low-current at default brightness |
+| Hardware | 24-pixel **or** 16-pixel NeoPixel ring powered from the board's USB 5V pin | Both ring sizes are first-class. The 16-LED ring draws less current and runs comfortably from USB |
 | Config | Start with auto-detect; set `COPILOT_RING_PORT` only if needed | Most boards are found automatically |
 
 The steps below follow this path. Once the ring works, use the configuration and firmware docs to customize brightness, pixel count, idle behavior, or a different firmware runtime.
@@ -201,8 +201,8 @@ or .github/hooks/           (per-repo — optional additional install)
 run-hook.ps1 / run-hook.sh
     │
     ▼
-Python host bridge  ──USB serial──▶  MCU firmware  ──▶  NeoPixel Ring (24 LEDs)
-(copilot_command_ring)                (CircuitPython,      (Adafruit product 1586)
+Python host bridge  ──USB serial──▶  MCU firmware  ──▶  NeoPixel Ring (16 or 24 LEDs)
+(copilot_command_ring)                (CircuitPython,      (Adafruit product 1463 or 1586)
                                        MicroPython,
                                        or Arduino)
 ```
@@ -213,13 +213,13 @@ Hook events flow from the Copilot CLI through wrapper scripts into a Python host
 
 | Component | Details |
 |-----------|---------|
-| **NeoPixel Ring** | [Adafruit NeoPixel Ring 24](https://www.adafruit.com/product/1586) — 24 × WS2812B RGB LEDs |
+| **NeoPixel Ring** | [Adafruit NeoPixel Ring 24](https://www.adafruit.com/product/1586) — 24 × WS2812B RGB LEDs (default) **or** [Adafruit NeoPixel Ring 16](https://www.adafruit.com/product/1463) — 16 × WS2812B RGB LEDs |
 | **Microcontroller** | Any USB-capable board: RP2040/RP2350 (Pico, XIAO), ESP32-S2/S3/C6 (QT Py, XIAO), Feather M4, etc. |
 | *(optional)* **Data resistor** | 300–500 Ω in series on the NeoPixel data line |
 | *(optional)* **Power capacitor** | 500–1000 µF electrolytic across NeoPixel VCC/GND |
 | *(optional)* **Level shifter** | 74AHCT125 for 3.3 V boards driving 5 V NeoPixels |
 
-> **Tip:** Connect grounds first, disconnect grounds last. See [`docs/hardware.md`](docs/hardware.md) for wiring diagrams and power guidance.
+> **Tip:** [Adafruit NeoPixel Ring 12](https://www.adafruit.com/product/1643) is also supported — choose it during `setup-status-ring` or set `pixel_count: 12`. Connect grounds first, disconnect grounds last. See [`docs/hardware.md`](docs/hardware.md) for wiring diagrams and power guidance.
 
 ## Supported Platforms
 
@@ -238,7 +238,7 @@ Most users can start with no configuration file. Add only the fields you need:
 |------|---------------------|
 | Auto-detect finds the wrong board | Set `COPILOT_RING_PORT` or `serial_port` |
 | LEDs are too bright or too dim | Set `COPILOT_RING_BRIGHTNESS` or `brightness` |
-| Your ring has a different LED count | Set `COPILOT_RING_PIXEL_COUNT` or `pixel_count` |
+| Your ring has a different LED count | Pick it during `setup-status-ring` (the wizard prompts for 24 / 16 / 12) or set `COPILOT_RING_PIXEL_COUNT` / `pixel_count` |
 | The ring should go dark after sessions end | Set `"idle_mode": "off"` in the config file |
 | Test without connected hardware | Run `python -m copilot_command_ring.simulate --dry-run`; set `COPILOT_RING_DRY_RUN=1` to make hooks skip serial sends |
 

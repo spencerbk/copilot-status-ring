@@ -1,11 +1,12 @@
 # Hardware Setup
 
-This guide covers wiring, parts, and power for the Copilot Command Ring. For a first build, keep the default low brightness and power the 24-pixel ring from the board's USB 5V/VBUS pin; move to an external 5V supply only if you increase brightness, use more pixels, or see voltage-drop symptoms.
+This guide covers wiring, parts, and power for the Copilot Command Ring. The 24-LED ring (Adafruit product 1586) and the 16-LED ring (Adafruit product 1463) are both first-class targets — the firmware auto-scales the spinner segment to match the ring size, and the setup wizard prompts you to pick during install. For a first build, keep the default low brightness and power either ring from the board's USB 5V/VBUS pin; move to an external 5V supply only if you increase brightness, use more pixels, or see voltage-drop symptoms.
 
 ## Contents
 
 - [Parts list](#parts-list)
 - [Recommended first build](#recommended-first-build)
+- [Ring size selection](#ring-size-selection)
 - [Wiring diagram](#wiring-diagram)
 - [Recommended boards](#recommended-boards)
 - [Wire gauge](#wire-gauge)
@@ -19,7 +20,9 @@ This guide covers wiring, parts, and power for the Copilot Command Ring. For a f
 
 | Part | Description | Notes |
 |------|-------------|-------|
-| **Adafruit NeoPixel Ring 24** | 24 × WS2812B RGB LEDs ([product 1586](https://www.adafruit.com/product/1586)) | The ring this project is designed for |
+| **Adafruit NeoPixel Ring 24** | 24 × WS2812B RGB LEDs ([product 1586](https://www.adafruit.com/product/1586)) | Project default; widest visual presence |
+| **Adafruit NeoPixel Ring 16** | 16 × WS2812B RGB LEDs ([product 1463](https://www.adafruit.com/product/1463)) | Smaller form factor; lower current draw — also a first-class target |
+| **Adafruit NeoPixel Ring 12** | 12 × WS2812B RGB LEDs ([product 1643](https://www.adafruit.com/product/1643)) | Smallest supported ring; offered in the setup wizard |
 | **USB microcontroller** | RP2040, ESP32-S2/S3, or similar | Must support CircuitPython, MicroPython, and/or Arduino |
 | **330 Ω resistor** (300–500 Ω) *(optional)* | In series with the NeoPixel data line | Recommended for permanent builds; safe to skip for short-wire prototyping |
 | **1000 µF capacitor** (500–1000 µF) | Across 5V and GND near the ring | Protects LEDs against power-on inrush current |
@@ -31,18 +34,29 @@ This guide covers wiring, parts, and power for the Copilot Command Ring. For a f
 
 ## Recommended first build
 
-For a reliable first setup, use the project defaults:
+Either the 24-LED ring or the 16-LED ring is a great starting point. Pick whichever you have on hand:
 
-| Choice | Recommendation |
-|--------|----------------|
-| LED device | Adafruit NeoPixel Ring 24 |
-| Firmware | CircuitPython |
-| Power | Board USB 5V/VBUS to ring 5V |
-| Data | Board-specific data pin (`D6`/`GP6` on Pico/Feather-style boards) to ring `DIN` through a 330 Ω resistor |
-| Ground | Board GND to ring GND |
-| Protection | 1000 µF capacitor across ring 5V/GND |
+| Choice | 24-LED build | 16-LED build |
+|--------|--------------|--------------|
+| LED device | Adafruit NeoPixel Ring 24 (product 1586) | Adafruit NeoPixel Ring 16 (product 1463) |
+| Firmware | CircuitPython | CircuitPython |
+| Power | Board USB 5V/VBUS to ring 5V | Board USB 5V/VBUS to ring 5V |
+| Data | Board-specific data pin (`D6`/`GP6` on Pico/Feather-style boards) to ring `DIN` through a 330 Ω resistor | Same wiring as the 24-LED build |
+| Ground | Board GND to ring GND | Board GND to ring GND |
+| Protection | 1000 µF capacitor across ring 5V/GND | 1000 µF capacitor across ring 5V/GND |
+| `pixel_count` | `24` (default) | `16` (set during `setup-status-ring`) |
 
-This works well at the default low brightness. Add a 74AHCT125 level shifter if the data wire is longer than about 15 cm, the ring flickers, or the build is permanent.
+Both work well at the default low brightness. Add a 74AHCT125 level shifter if the data wire is longer than about 15 cm, the ring flickers, or the build is permanent.
+
+---
+
+## Ring size selection
+
+The host bridge sends `pixel_count` in every message, and all three firmware variants apply it at runtime — so a single firmware build supports any ring size you wire up. The setup wizard (`setup-status-ring`) prompts you to pick from 24, 16, or 12 LEDs and writes your choice into `~/.copilot-command-ring.local.json` (global scope) or `<repo>/.copilot-command-ring.local.json` (per-repo scope).
+
+You can also override outside the wizard by setting `COPILOT_RING_PIXEL_COUNT` or editing the `pixel_count` field in your local JSON config. The spinner segment auto-scales to ~25% of the ring (with a floor of 2 LEDs) at any size.
+
+> **Startup wipe note:** The firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT` (Arduino) is `24`. Until the first host message arrives after boot, the startup wipe assumes a 24-LED ring. On a 16- or 12-LED ring, the wipe still works — the firmware just writes a few extra bytes that vanish into the wire — but for a perfectly clean boot animation, edit `NUM_PIXELS` / `PIXEL_COUNT` in the firmware to match your ring before flashing.
 
 ---
 
@@ -144,7 +158,15 @@ Standard breadboard jumper wires and Dupont wires (typically 22–24 AWG) are fi
 
 ## Power notes
 
-The NeoPixel Ring 24 can draw up to **~1.4 A at full white, full brightness** (24 pixels × ~60 mA each). In practice, the Copilot Command Ring runs at very low brightness (4–10%), so current draw is much lower.
+NeoPixel current draw at full white, full brightness is approximately **60 mA per pixel**:
+
+| Ring | Pixels | Max draw at full white / full brightness | Typical draw at default 4 % brightness |
+|------|--------|-----------------------------------------|----------------------------------------|
+| Ring 24 (product 1586) | 24 | ~1.4 A | ~60 mA |
+| Ring 16 (product 1463) | 16 | ~0.96 A | ~40 mA |
+| Ring 12 (product 1643) | 12 | ~0.72 A | ~30 mA |
+
+In practice, the Copilot Command Ring runs at very low brightness (4–10%), so current draw is much lower than the theoretical max.
 
 **Rules of thumb:**
 

@@ -56,6 +56,14 @@ The host can override `BRIGHTNESS` and `PIXEL_COUNT` at runtime with
 `COPILOT_RING_BRIGHTNESS`, `COPILOT_RING_PIXEL_COUNT`, or the local JSON config.
 The startup wipe uses the sketch defaults until the first host message arrives.
 
+## Ring size
+
+The 24-LED Adafruit NeoPixel Ring (product 1586) is the default, but the 16-LED ring (product 1463) and the 12-LED ring (product 1643) are first-class targets too. The host bridge sends `pixel_count` to the sketch in every message and the firmware applies it at runtime — animations (including the working spinner) auto-scale to the ring you wired.
+
+The simplest way to set the value is the `setup-status-ring` wizard, which prompts for 24 / 16 / 12 and writes the choice into `.copilot-command-ring.local.json`. You can also set `pixel_count` directly in that file or `COPILOT_RING_PIXEL_COUNT` in the environment.
+
+`#define PIXEL_COUNT 24` near the top of `copilot_command_ring.ino` is the *startup* default used only for the boot wipe before the first host message arrives. For a perfectly clean wipe on a 16- or 12-LED ring, edit it to match before flashing.
+
 ## Board-specific notes
 
 Most boards use pin `6` for `NEOPIXEL_PIN`. Exceptions:

@@ -15,11 +15,15 @@ keeping the durable setup logic in the Python package.
    detected.
 3. Asks whether hooks should be installed globally for all repos or deployed to
    one target repo.
-4. Prompts for the board, firmware runtime, and NeoPixel data pin using the
-   current supported-board matrix.
+4. Prompts for the board, firmware runtime, NeoPixel data pin, and ring size
+   (24 / 16 / 12 LEDs) using the current supported-board matrix.
 5. Attempts host USB serial auto-detection when requested.
 6. Requires explicit approval before preparing or writing firmware files.
-7. Runs a dry-run simulation command after hooks are installed.
+7. Persists the chosen ring size to `~/.copilot-command-ring.local.json`
+   (global scope) or `<repo>/.copilot-command-ring.local.json` (repo scope) by
+   merging `pixel_count` into any existing config. Picking the default 24 with
+   no existing config file leaves no file behind.
+8. Runs a dry-run simulation command after hooks are installed.
 
 CircuitPython can copy prepared `boot.py` and `code.py` to a detected or supplied
 `CIRCUITPY` drive and attempts to install the `neopixel` dependency with
@@ -60,12 +64,17 @@ For non-interactive callers, pass selections as JSON:
   "board_id": "raspberry-pi-pico",
   "runtime": "circuitpython",
   "data_pin": "board.GP6",
+  "pixel_count": 24,
   "auto_detect_port": true,
   "approve_firmware": false,
   "force_hooks": true
 }
 '@ | copilot-command-ring setup-status-ring --from-json - --yes
 ```
+
+`pixel_count` is optional (defaults to `24`) and accepts `24`, `16`, or `12` —
+the wizard merges your choice into the local JSON config as a side effect, so a
+later run of the host bridge picks it up automatically.
 
 Use `--options-json` to inspect the board/runtime matrix consumed by the
 extension, `--plan-only` to print the commands that would run without

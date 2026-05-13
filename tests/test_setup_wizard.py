@@ -4,12 +4,15 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from copilot_command_ring.boards import RUNTIME_CIRCUITPYTHON, RUNTIME_MICROPYTHON
+from copilot_command_ring.constants import CONFIG_FILE_NAME, DEFAULT_PIXEL_COUNT
 from copilot_command_ring.firmware_install import FirmwareInstallError, PreparedFirmware
 from copilot_command_ring.setup_wizard import (
     PACKAGE_SPEC_DEFAULT,
@@ -17,15 +20,34 @@ from copilot_command_ring.setup_wizard import (
     SCOPE_REPO,
     SetupWizardError,
     WizardSelections,
+    _write_local_config,
     build_setup_plan,
     default_package_spec,
     default_state_dir,
     default_venv_dir,
     execute_setup_plan,
     find_repo_root,
+    prompt_for_selections,
     selections_from_json,
     venv_python_path,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_user_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirect setup_wizard's notion of ``Path.home()`` into the test tmp dir.
+
+    This guarantees the local-config writer never touches the developer's real
+    home directory during the test run, regardless of which selections are
+    used or whether ``execute_setup_plan`` is invoked.
+    """
+    isolated_home = tmp_path / "home"
+    isolated_home.mkdir(exist_ok=True)
+    monkeypatch.setattr(
+        "copilot_command_ring.setup_wizard._user_home",
+        lambda: isolated_home,
+    )
+    return isolated_home
 
 
 def _make_clone(tmp_path: Path) -> Path:
@@ -340,3 +362,193 @@ def test_automatic_micropython_install_does_not_report_temp_dir(
     result = execute_setup_plan(plan, runner=lambda _command: None)
 
     assert result.firmware_prepared_dir is None
+
+
+# ── Ring size: pixel_count plumbing through the wizard ────────────────────
+
+
+def test_selections_from_json_defaults_pixel_count_when_absent() -> None:
+    selections = selections_from_json(
+        '{"scope":"global","board_id":"raspberry-pi-pico","runtime":"circuitpython"}'
+    )
+    assert selections.pixel_count == DEFAULT_PIXEL_COUNT
+
+
+def test_selections_from_json_parses_explicit_pixel_count() -> None:
+    selections = selections_from_json(
+        '{"scope":"global","board_id":"raspberry-pi-pico",'
+        '"runtime":"circuitpython","pixel_count":16}'
+    )
+    assert selections.pixel_count == 16
+
+
+@pytest.mark.parametrize("invalid", [0, -1, -100])
+def test_selections_from_json_rejects_non_positive_pixel_count(invalid: int) -> None:
+    payload = (
+        '{"scope":"global","board_id":"raspberry-pi-pico",'
+        f'"runtime":"circuitpython","pixel_count":{invalid}'
+        "}"
+    )
+    with pytest.raises(SetupWizardError, match="pixel_count"):
+        selections_from_json(payload)
+
+
+@pytest.mark.parametrize("invalid", ["abc", "3.14"])
+def test_selections_from_json_rejects_non_integer_pixel_count(invalid: str) -> None:
+    payload = (
+        '{"scope":"global","board_id":"raspberry-pi-pico",'
+        f'"runtime":"circuitpython","pixel_count":"{invalid}"'
+        "}"
+    )
+    with pytest.raises(SetupWizardError, match="pixel_count"):
+        selections_from_json(payload)
+
+
+def test_selections_from_json_rejects_boolean_pixel_count() -> None:
+    payload = (
+        '{"scope":"global","board_id":"raspberry-pi-pico",'
+        '"runtime":"circuitpython","pixel_count":true}'
+    )
+    with pytest.raises(SetupWizardError, match="pixel_count"):
+        selections_from_json(payload)
+
+
+def test_prompt_for_selections_captures_ring_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Stdin sequence:
+    #   1\n          → scope: global
+    #   1\n          → board: first option
+    #   <enter>      → runtime: default
+    #   <enter>      → data pin: default
+    #   2\n          → ring size: 16
+    #   n\n          → auto-detect serial: no
+    stdin = StringIO("1\n1\n\n\n2\nn\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    selections = prompt_for_selections()
+    assert selections.pixel_count == 16
+
+
+def test_prompt_for_selections_default_ring_size_is_24(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Same as above but accept the default for the ring-size prompt.
+    stdin = StringIO("1\n1\n\n\n\nn\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    selections = prompt_for_selections()
+    assert selections.pixel_count == DEFAULT_PIXEL_COUNT
+
+
+# ── Ring size: local-config writer behavior ───────────────────────────────
+
+
+def _selections_global(pixel_count: int = DEFAULT_PIXEL_COUNT) -> WizardSelections:
+    return WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=False,
+        pixel_count=pixel_count,
+    )
+
+
+def _selections_repo(repo_path: Path, pixel_count: int) -> WizardSelections:
+    return WizardSelections(
+        scope=SCOPE_REPO,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        repo_path=repo_path,
+        auto_detect_port=False,
+        pixel_count=pixel_count,
+    )
+
+
+def test_write_local_config_skips_when_default_and_no_existing_file(
+    _isolate_user_home: Path,
+) -> None:
+    target = _isolate_user_home / CONFIG_FILE_NAME
+    assert not target.exists()
+    written = _write_local_config(_selections_global(pixel_count=24))
+    assert written is None
+    assert not target.exists()
+
+
+def test_write_local_config_writes_non_default_pixel_count_global(
+    _isolate_user_home: Path,
+) -> None:
+    written = _write_local_config(_selections_global(pixel_count=16))
+    assert written == _isolate_user_home / CONFIG_FILE_NAME
+    payload = json.loads(written.read_text(encoding="utf-8"))
+    assert payload == {"pixel_count": 16}
+
+
+def test_write_local_config_pins_default_when_existing_file_exists(
+    _isolate_user_home: Path,
+) -> None:
+    target = _isolate_user_home / CONFIG_FILE_NAME
+    target.write_text(json.dumps({"baud": 115200}) + "\n", encoding="utf-8")
+    written = _write_local_config(_selections_global(pixel_count=24))
+    assert written == target
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload == {"baud": 115200, "pixel_count": 24}
+
+
+def test_write_local_config_preserves_unrelated_fields(_isolate_user_home: Path) -> None:
+    target = _isolate_user_home / CONFIG_FILE_NAME
+    target.write_text(
+        json.dumps({"baud": 115200, "brightness": 0.08, "idle_mode": "off"}) + "\n",
+        encoding="utf-8",
+    )
+    written = _write_local_config(_selections_global(pixel_count=12))
+    assert written == target
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload == {
+        "baud": 115200,
+        "brightness": 0.08,
+        "idle_mode": "off",
+        "pixel_count": 12,
+    }
+
+
+def test_write_local_config_repo_scope_writes_into_repo(tmp_path: Path) -> None:
+    repo = tmp_path / "myrepo"
+    repo.mkdir()
+    written = _write_local_config(_selections_repo(repo, pixel_count=16))
+    assert written == repo.resolve() / CONFIG_FILE_NAME
+    payload = json.loads(written.read_text(encoding="utf-8"))
+    assert payload == {"pixel_count": 16}
+
+
+def test_write_local_config_recovers_from_corrupt_existing_file(
+    _isolate_user_home: Path,
+) -> None:
+    """A malformed JSON file must not abort the writer; it overwrites cleanly."""
+    target = _isolate_user_home / CONFIG_FILE_NAME
+    target.write_text("not-json", encoding="utf-8")
+    written = _write_local_config(_selections_global(pixel_count=16))
+    assert written == target
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload == {"pixel_count": 16}
+
+
+def test_execute_setup_plan_records_config_written_for_non_default(
+    tmp_path: Path,
+    _isolate_user_home: Path,
+) -> None:
+    selections = _selections_global(pixel_count=16)
+    plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv", package_spec=".")
+    result = execute_setup_plan(plan, runner=lambda _command: None)
+
+    assert result.config_written == _isolate_user_home / CONFIG_FILE_NAME
+    payload = json.loads(result.config_written.read_text(encoding="utf-8"))
+    assert payload == {"pixel_count": 16}
+
+
+def test_execute_setup_plan_skips_config_for_default_pixel_count(
+    tmp_path: Path,
+    _isolate_user_home: Path,
+) -> None:
+    selections = _selections_global(pixel_count=DEFAULT_PIXEL_COUNT)
+    plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv", package_spec=".")
+    result = execute_setup_plan(plan, runner=lambda _command: None)
+
+    assert result.config_written is None
+    assert not (_isolate_user_home / CONFIG_FILE_NAME).exists()

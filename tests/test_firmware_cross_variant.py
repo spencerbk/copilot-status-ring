@@ -355,3 +355,83 @@ class TestArduinoFeatureParity:
         src = _read_arduino_sources()
         assert "consecutiveErrors" in src, "Arduino must track consecutive errors"
         assert "MAX_CONSEC_ERRORS" in src, "Arduino must define MAX_CONSEC_ERRORS"
+
+
+# ── Spinner auto-scale parity ─────────────────────────────────────────────
+
+
+def _spinner_default_width(num_pixels: int) -> int:
+    """The reference formula every firmware variant must implement."""
+    return max(2, num_pixels // 4)
+
+
+class TestSpinnerAutoScaleParity:
+    """All firmware variants must auto-scale spinner width with ring size.
+
+    Formula: ``max(2, num_pixels // 4)`` so the segment stays at ~25% of the
+    ring (with a floor of 2 LEDs for very small rings). At 24 LEDs this
+    yields 6, matching the previous fixed SPINNER_WIDTH so the default 24-LED
+    behavior is unchanged.
+    """
+
+    def test_reference_formula_values(self) -> None:
+        # Source-of-truth sanity table: small rings, 12 / 16 / 24 supported sizes.
+        assert _spinner_default_width(8) == 2
+        assert _spinner_default_width(12) == 3
+        assert _spinner_default_width(16) == 4
+        assert _spinner_default_width(24) == 6
+        assert _spinner_default_width(60) == 15
+
+    def test_circuitpython_spinner_uses_auto_scale_default(self) -> None:
+        src = CP_CODE.read_text(encoding="utf-8")
+        # The dispatcher must default width to max(2, self.num_pixels // 4)
+        assert re.search(
+            r'kwargs\.get\(\s*"width"\s*,\s*max\(\s*2\s*,\s*self\.num_pixels\s*//\s*4\s*\)',
+            src,
+        ), "CircuitPython spinner dispatcher must use max(2, self.num_pixels // 4) as default"
+        # And the working STATE_MAP entry must NOT pin width to a constant
+        working_block = re.search(
+            r'"working":\s*\(\s*"spinner",\s*COLOR_WORKING,\s*\{([^}]*)\}',
+            src,
+        )
+        assert working_block, "working STATE_MAP entry not found in CircuitPython firmware"
+        assert "width" not in working_block.group(1), (
+            "working STATE_MAP entry must not pin a width — let the dispatcher auto-scale"
+        )
+
+    def test_micropython_spinner_uses_auto_scale_default(self) -> None:
+        src = MP_CODE.read_text(encoding="utf-8")
+        assert re.search(
+            r'kwargs\.get\(\s*"width"\s*,\s*max\(\s*2\s*,\s*self\.num_pixels\s*//\s*4\s*\)',
+            src,
+        ), "MicroPython spinner dispatcher must use max(2, self.num_pixels // 4) as default"
+        working_block = re.search(
+            r'"working":\s*\(\s*"spinner",\s*COLOR_WORKING,\s*\{([^}]*)\}',
+            src,
+        )
+        assert working_block, "working STATE_MAP entry not found in MicroPython firmware"
+        assert "width" not in working_block.group(1), (
+            "working STATE_MAP entry must not pin a width — let the dispatcher auto-scale"
+        )
+
+    def test_arduino_spinner_uses_auto_scale_default(self) -> None:
+        src = _read_arduino_sources()
+        # The ST_WORKING case must derive spinner width from runtimePixelCount / 4
+        # with a floor of 2, instead of passing a hard-coded literal like `6`.
+        working_block = re.search(
+            r"case\s+ST_WORKING\s*:\s*\{?(.*?)break\s*;",
+            src,
+            re.DOTALL,
+        )
+        assert working_block, "ST_WORKING case not found in Arduino firmware"
+        block_src = working_block.group(1)
+        assert "runtimePixelCount / 4" in block_src or "runtimePixelCount/4" in block_src, (
+            "Arduino ST_WORKING must derive spinner width from runtimePixelCount / 4"
+        )
+        assert "< 2" in block_src, (
+            "Arduino ST_WORKING must enforce a minimum spinner width of 2 LEDs"
+        )
+        # Make sure no literal hard-coded width survives the call site
+        assert not re.search(r"animSpinner\([^,]+,\s*\d+\s*,", block_src), (
+            "Arduino ST_WORKING must not pass a hard-coded literal width to animSpinner"
+        )
