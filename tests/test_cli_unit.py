@@ -108,3 +108,40 @@ class TestCLINoCommand:
         with pytest.raises(SystemExit) as exc_info:
             main([])
         assert exc_info.value.code == 0
+
+
+class TestCLIDoctor:
+    """The ``doctor`` subcommand delegates to doctor.run_doctor."""
+
+    @patch("copilot_command_ring.doctor.run_doctor", return_value=0)
+    def test_doctor_default_invokes_with_ping(self, mock_run: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["doctor"])
+        assert exc_info.value.code == 0
+        mock_run.assert_called_once_with(config_dir=None, ping=True)
+
+    @patch("copilot_command_ring.doctor.run_doctor", return_value=0)
+    def test_doctor_no_ping_flag(self, mock_run: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["doctor", "--no-ping"])
+        assert exc_info.value.code == 0
+        mock_run.assert_called_once_with(config_dir=None, ping=False)
+
+    @patch("copilot_command_ring.doctor.run_doctor", return_value=0)
+    def test_doctor_config_dir_passthrough(self, mock_run: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["doctor", "--config-dir", "/tmp/foo"])
+        assert exc_info.value.code == 0
+        # Use Path equality so the test passes on Windows and POSIX.
+        from pathlib import Path
+
+        call_kwargs = mock_run.call_args.kwargs
+        assert call_kwargs["config_dir"] == Path("/tmp/foo")
+        assert call_kwargs["ping"] is True
+
+    @patch("copilot_command_ring.doctor.run_doctor", return_value=1)
+    def test_doctor_propagates_failure_exit_code(self, mock_run: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["doctor"])
+        assert exc_info.value.code == 1
+        mock_run.assert_called_once()

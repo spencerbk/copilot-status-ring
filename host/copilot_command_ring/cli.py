@@ -7,6 +7,7 @@ Subcommands
 setup                 Install global hooks (all repos, one-time).
 deploy <target-dir>   Deploy hooks into a specific repository.
 hook <event_name>     Handle a Copilot CLI hook event (called by deployed wrappers).
+doctor                Run a one-shot health check (config, ports, lock, ping).
 """
 
 from __future__ import annotations
@@ -69,6 +70,24 @@ def main(argv: list[str] | None = None) -> None:
         help="The Copilot CLI event name (e.g. sessionStart, preToolUse)",
     )
 
+    # ── doctor ─────────────────────────────────────────────────────────
+    doctor_parser = sub.add_parser(
+        "doctor",
+        help="Run a one-shot health check (config, ports, lock, ping)",
+    )
+    doctor_parser.add_argument(
+        "--no-ping",
+        action="store_true",
+        help="Skip the test write to the device (still report config/ports/lock)",
+    )
+    doctor_parser.add_argument(
+        "--config-dir",
+        help=(
+            "Directory to start searching for "
+            ".copilot-command-ring.local.json (default: cwd)"
+        ),
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "setup":
@@ -95,6 +114,15 @@ def main(argv: list[str] | None = None) -> None:
 
         ok = run_setup_status_ring_from_args(args)
         sys.exit(0 if ok else 1)
+
+    elif args.command == "doctor":
+        from pathlib import Path
+
+        from .doctor import run_doctor
+
+        config_dir = Path(args.config_dir) if args.config_dir else None
+        exit_code = run_doctor(config_dir=config_dir, ping=not args.no_ping)
+        sys.exit(exit_code)
 
     else:
         parser.print_help()

@@ -72,6 +72,10 @@ files under your user-level setup directory and prints the copy location.
 > whether hooks should apply globally or to one repo, prompts for
 > board/runtime/pin choices, and attempts safe device detection before any
 > firmware write. See [`docs/setup-status-ring.md`](docs/setup-status-ring.md).
+>
+> Already set up? Run `/status-ring-doctor` (or `copilot-command-ring doctor`
+> from any shell) to verify config, port enumeration, descriptor match, lock
+> state, and send a one-shot ping to the ring.
 
 <details>
 <summary><strong>Manual install (advanced)</strong></summary>

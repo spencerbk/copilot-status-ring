@@ -31,7 +31,7 @@ function pythonEnv() {
     };
 }
 
-function runPythonCandidate(candidate, args, input) {
+function runPythonCandidate(candidate, args, input, { allowNonZero = false } = {}) {
     return new Promise((resolve, reject) => {
         const child = execFile(
             candidate.executable,
@@ -44,12 +44,20 @@ function runPythonCandidate(candidate, args, input) {
             },
             (error, stdout, stderr) => {
                 if (error) {
+                    if (allowNonZero && error.code !== "ENOENT") {
+                        // Doctor and other diagnostic commands intentionally exit
+                        // non-zero when checks fail. Their stdout *is* the report
+                        // we want to surface, so preserve it instead of throwing
+                        // away with only the stderr line.
+                        resolve({ stdout, stderr, code: error.code ?? 1 });
+                        return;
+                    }
                     const wrapped = new Error(stderr || error.message);
                     wrapped.code = error.code;
                     reject(wrapped);
                     return;
                 }
-                resolve({ stdout, stderr });
+                resolve({ stdout, stderr, code: 0 });
             },
         );
         if (input !== undefined) {
@@ -58,11 +66,11 @@ function runPythonCandidate(candidate, args, input) {
     });
 }
 
-async function runPython(args, input) {
+async function runPython(args, input, options) {
     let lastError;
     for (const candidate of pythonCandidates) {
         try {
-            return await runPythonCandidate(candidate, args, input);
+            return await runPythonCandidate(candidate, args, input, options);
         } catch (error) {
             lastError = error;
             if (error.code !== "ENOENT") {
@@ -252,6 +260,33 @@ async function runSetup(session) {
     await session.log(output || "Copilot Command Ring setup complete.");
 }
 
+async function runDoctor(session) {
+    // Pass --config-dir process.cwd() so the doctor evaluates the user's
+    // session cwd, not the extension's repoRoot install location -- without
+    // this override the doctor would silently load the wrong config file.
+    const configDir = process.cwd();
+    let result;
+    try {
+        result = await runPython(["doctor", "--config-dir", configDir], undefined, {
+            allowNonZero: true,
+        });
+    } catch (error) {
+        await session.log(`status-ring-doctor failed to launch: ${error.message}`, {
+            level: "error",
+        });
+        return;
+    }
+    const body = [result.stdout.trim(), result.stderr.trim()]
+        .filter(Boolean)
+        .join("\n");
+    const message = body || "(doctor produced no output)";
+    if (result.code === 0) {
+        await session.log(message);
+    } else {
+        await session.log(message, { level: "error" });
+    }
+}
+
 let session;
 session = await joinSession({
     commands: [
@@ -266,6 +301,14 @@ session = await joinSession({
                         level: "error",
                     });
                 }
+            },
+        },
+        {
+            name: "status-ring-doctor",
+            description:
+                "Health check: verify config, port enumeration, descriptor match, lock state, and send a transient ping",
+            handler: async () => {
+                await runDoctor(session);
             },
         },
     ],

@@ -5,6 +5,7 @@ Common issues and solutions for the Copilot Command Ring.
 ## Contents
 
 - [Symptom index](#symptom-index)
+- [Run the doctor first](#run-the-doctor-first)
 - [Start with these checks](#start-with-these-checks)
 - ["No serial port detected"](#no-serial-port-detected)
 - [`copilot-command-ring: command not found`](#copilot-command-ring-command-not-found)
@@ -23,12 +24,29 @@ Common issues and solutions for the Copilot Command Ring.
 
 ---
 
+## Run the doctor first
+
+For most "ring isn't doing what I expect" problems, the fastest path to a
+diagnosis is the bundled health check:
+
+```text
+/status-ring-doctor          # inside Copilot CLI
+copilot-command-ring doctor  # from any shell
+```
+
+It walks the same path a hook walks (config -> port discovery -> matcher ->
+lock -> serial write) and prints exactly which step failed. Add `--no-ping`
+to skip the test write to the device and just observe the static state.
+
+---
+
 ## Symptom index
 
 If you already know what is failing, start here:
 
 | Symptom | Start here |
 |---------|------------|
+| Anything you don't immediately recognize | [Run the doctor first](#run-the-doctor-first) |
 | Host says no port was found, or the ring warning says it may be offline | ["No serial port detected"](#no-serial-port-detected) and [Ring appears offline / hook silently doing nothing](#ring-appears-offline--hook-silently-doing-nothing) |
 | `copilot-command-ring: command not found` | [`copilot-command-ring: command not found`](#copilot-command-ring-command-not-found) |
 | `pyserial` import or install errors | ["pyserial not installed"](#pyserial-not-installed) |
@@ -44,7 +62,22 @@ If you already know what is failing, start here:
 
 ## Start with these checks
 
-If you are not sure where the problem is, check the four layers in this order:
+If you are not sure where the problem is, start with the doctor — it runs all
+four checks below in one shot and prints exactly which one failed:
+
+```powershell
+# Inside Copilot CLI:
+/status-ring-doctor
+
+# Or from any shell:
+copilot-command-ring doctor
+```
+
+The doctor reports config provenance, port enumeration, descriptor matching,
+lock state, and (by default) sends a transient ping to the ring. Add
+`--no-ping` to skip the test write. Exit code is `0` when every check passes.
+
+If you prefer a manual walk-through, check the four layers in this order:
 
 1. **Hooks installed:** On macOS/Linux, run `./install.sh` from a local clone. For manual installs, run `copilot-command-ring setup` for global hooks, or `copilot-command-ring deploy <path>` for one repo.
 2. **Host can send:** Run `python -m copilot_command_ring.simulate --dry-run` and confirm JSON Lines are printed.
@@ -56,6 +89,19 @@ If you are not sure where the problem is, check the four layers in this order:
 ## "No serial port detected"
 
 The host bridge can't find your microcontroller.
+
+**First, run the doctor:**
+
+```powershell
+copilot-command-ring doctor --no-ping
+```
+
+It enumerates every port the OS sees, lists the descriptor strings the host
+tries to match against, and tells you whether your device showed up at all.
+The two most common outcomes are: (a) no ports enumerated → cable / port /
+driver problem; (b) ports enumerated but none matched → add a substring of
+your device's description to `device_match.description_contains` in
+`.copilot-command-ring.local.json`, or set `serial_port` directly.
 
 **Check the USB cable:**
 
