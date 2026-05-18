@@ -26,7 +26,7 @@ from .boards import (
 )
 from .config import Config
 from .constants import CONFIG_FILE_NAME, DEFAULT_PIXEL_COUNT
-from .detect_ports import detect_serial_port
+from .detect_ports import detect_serial_port, list_serial_ports
 from .firmware_install import (
     FirmwareInstallError,
     PreparedFirmware,
@@ -67,6 +67,7 @@ class WizardSelections:
     firmware_target: Path | None = None
     force_hooks: bool = True
     pixel_count: int = DEFAULT_PIXEL_COUNT
+    serial_port: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-serializable representation."""
@@ -83,6 +84,7 @@ class WizardSelections:
             ),
             "force_hooks": self.force_hooks,
             "pixel_count": self.pixel_count,
+            "serial_port": self.serial_port,
         }
 
 
@@ -292,6 +294,12 @@ def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
     firmware_target = Path(str(target_value)).expanduser() if target_value else None
     pin_value = data.get("data_pin")
     data_pin = str(pin_value).strip() if pin_value not in (None, "") else None
+    port_value = data.get("serial_port")
+    if port_value is None:
+        serial_port: str | None = None
+    else:
+        port_text = str(port_value).strip()
+        serial_port = port_text if port_text else None
     pixel_count = _coerce_pixel_count(data.get("pixel_count"))
 
     return WizardSelections(
@@ -305,6 +313,7 @@ def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
         firmware_target=firmware_target,
         force_hooks=_bool_value(data.get("force_hooks"), default=True),
         pixel_count=pixel_count,
+        serial_port=serial_port,
     )
 
 
@@ -414,6 +423,7 @@ def build_setup_plan(
                 "-m",
                 "pip",
                 "install",
+                "--quiet",
                 "--upgrade",
                 resolved_package_spec,
             ),
@@ -428,6 +438,7 @@ def build_setup_plan(
                 "--dry-run",
                 "--delay",
                 "0",
+                "--quiet",
             ),
         ),
         firmware=build_firmware_action_plan(selections),
@@ -454,12 +465,17 @@ def _user_home() -> Path:
 
 
 def _write_local_config(selections: WizardSelections) -> Path | None:
-    """Persist the wizard's pixel_count to the local JSON config file.
+    """Persist the wizard's pixel_count (and serial_port, if chosen) to the
+    local JSON config file.
 
     Merge semantics: if the target file already exists and parses as a JSON
     object, its existing fields are preserved and only ``pixel_count`` is
-    overwritten. Returns the path that was written, or ``None`` when the
-    wizard chose to skip (default pixel count + no existing file).
+    overwritten. When ``selections.serial_port`` is set, it is also merged
+    in; when ``selections.serial_port`` is ``None`` (the wizard didn't ask
+    or the user chose "skip"), any pre-existing ``serial_port`` in the file
+    is left untouched. Returns the path that was written, or ``None`` when
+    the wizard chose to skip (default pixel count + no chosen port + no
+    existing file).
     """
     target = _resolve_local_config_path(selections)
     existing: dict[str, object] = {}
@@ -472,10 +488,17 @@ def _write_local_config(selections: WizardSelections) -> Path | None:
         if isinstance(data, dict):
             existing = data
 
-    if selections.pixel_count == DEFAULT_PIXEL_COUNT and not file_existed:
+    has_chosen_port = selections.serial_port is not None
+    if (
+        selections.pixel_count == DEFAULT_PIXEL_COUNT
+        and not file_existed
+        and not has_chosen_port
+    ):
         return None
 
     existing["pixel_count"] = selections.pixel_count
+    if has_chosen_port:
+        existing["serial_port"] = selections.serial_port
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
     return target
@@ -483,6 +506,17 @@ def _write_local_config(selections: WizardSelections) -> Path | None:
 
 def _run_checked(command: Sequence[str]) -> None:
     subprocess.run(list(command), check=True)
+
+
+def _phase(label: str) -> None:
+    """Print a setup phase header to stderr.
+
+    Phase headers give the user a visible progress trail when the underlying
+    commands (``pip install --quiet``, ``simulate --quiet``, …) are silent on
+    success. Keep them short, terminal-friendly, and on stderr so they do not
+    pollute JSON-on-stdout commands like ``--plan-only``.
+    """
+    print(f"==> {label}", file=sys.stderr)
 
 
 def _firmware_output_dir(plan: SetupPlan, output_dir: Path | None) -> Path | None:
@@ -517,17 +551,29 @@ def execute_setup_plan(
 ) -> SetupResult:
     """Execute a setup plan and return a summary."""
     if plan.create_venv:
+        _phase(f"Creating virtual environment at {plan.venv_dir}")
         runner(plan.create_venv_command.command)
     if not skip_install:
+        _phase("Installing copilot-command-ring (this may take a minute)")
         runner(plan.install_command.command)
+    _phase(plan.hook_command.label)
     runner(plan.hook_command.command)
 
-    detected_port = detect_serial_port(Config()) if plan.selections.auto_detect_port else None
+    detected_port: str | None = None
+    if plan.selections.serial_port:
+        # When the wizard collected an explicit port, prefer it for the
+        # summary instead of re-detecting — re-detection might pick a
+        # different port (e.g. the one the user just rejected).
+        detected_port = plan.selections.serial_port
+    elif plan.selections.auto_detect_port:
+        _phase("Detecting host serial port")
+        detected_port = detect_serial_port(Config())
     firmware_written: tuple[Path, ...] = ()
     prepared_dir: Path | None = None
     firmware_warnings: tuple[str, ...] = ()
 
     if plan.selections.approve_firmware:
+        _phase(f"Preparing {plan.selections.runtime} firmware")
         persistent_output = _firmware_output_dir(plan, output_dir)
         if persistent_output is None:
             with tempfile.TemporaryDirectory(prefix="copilot-ring-firmware-") as temp_dir:
@@ -572,6 +618,7 @@ def execute_setup_plan(
                     runner=runner,
                 )
 
+    _phase("Validating event pipeline")
     runner(plan.validation_command.command)
     config_written = _write_local_config(plan.selections)
     return SetupResult(
@@ -594,6 +641,17 @@ def detect_circuitpy_payload() -> dict[str, object]:
     """Return JSON-ready CIRCUITPY drive detection status."""
     drive = find_circuitpython_drive()
     return {"detected": drive is not None, "path": str(drive) if drive is not None else None}
+
+
+def list_ports_payload() -> dict[str, object]:
+    """Return JSON-ready list of every enumerable serial port.
+
+    Each entry has a ``device`` (e.g. ``COM12``) and a ``description``.
+    The extension calls this when the user wants to manually pick a port
+    after rejecting auto-detection or when no matching device was found.
+    Returns an empty list (not an error) when pyserial is unavailable.
+    """
+    return {"ports": list_serial_ports()}
 
 
 def _choose(prompt: str, options: Sequence[tuple[str, str]], *, default: str) -> str:
@@ -622,6 +680,71 @@ def _confirm(prompt: str, *, default: bool) -> bool:
     if not answer:
         return default
     return answer in {"y", "yes"}
+
+
+def _pick_serial_port_interactively(
+    *,
+    auto_detected: str | None,
+) -> str | None:
+    """Prompt the user to choose a serial port for the setup config.
+
+    The flow always offers a "Skip" outcome so the user can leave any
+    pre-existing configured port untouched. Returns the chosen port
+    device string (e.g. ``"COM12"``) or ``None`` if the user skipped or
+    no ports were enumerable. Empty enumeration (``pyserial`` missing,
+    no devices) collapses to skip without raising, mirroring the
+    extension's empty-list handling.
+    """
+    ports = list_serial_ports()
+    if auto_detected is not None:
+        options: list[tuple[str, str]] = [
+            ("__use__", f"Use {auto_detected} (auto-detected)"),
+        ]
+        if ports:
+            options.append(("__pick__", "Pick a different port"))
+        options.append(("__skip__", "Skip — keep any existing saved port"))
+        choice = _choose(
+            "How should the ring's serial port be configured?",
+            tuple(options),
+            default="__use__",
+        )
+        if choice == "__use__":
+            return auto_detected
+        if choice == "__skip__":
+            return None
+    else:
+        if not ports:
+            print(
+                "No matching serial device detected and no ports could be enumerated."
+            )
+            return None
+        options = [
+            ("__pick__", "Pick a port from the list"),
+            ("__skip__", "Skip — keep any existing saved port"),
+        ]
+        choice = _choose(
+            "How should the ring's serial port be configured?",
+            tuple(options),
+            default="__skip__",
+        )
+        if choice == "__skip__":
+            return None
+
+    if not ports:
+        print("No serial ports could be enumerated. Skipping.")
+        return None
+    port_options = tuple(
+        (
+            entry["device"],
+            f"{entry['device']} — {entry['description']}".rstrip(" —"),
+        )
+        for entry in ports
+    )
+    return _choose(
+        "Which serial port should the ring use?",
+        port_options,
+        default=port_options[0][0],
+    )
 
 
 def prompt_for_selections() -> WizardSelections:
@@ -667,12 +790,17 @@ def prompt_for_selections() -> WizardSelections:
     pixel_count = int(pixel_choice)
 
     auto_detect = _confirm("Attempt host USB serial auto-detection?", default=True)
+    serial_port: str | None = None
     firmware_target = None
     approve = False
     if auto_detect:
-        port = detect_serial_port(Config())
-        if port:
-            approve = _confirm(f"Detected {port}. Approve firmware install/copy?", default=False)
+        auto_detected = detect_serial_port(Config())
+        serial_port = _pick_serial_port_interactively(auto_detected=auto_detected)
+        if serial_port is not None:
+            approve = _confirm(
+                f"Approve firmware install/copy for {serial_port}?",
+                default=False,
+            )
             if approve and runtime == RUNTIME_CIRCUITPYTHON:
                 drive = find_circuitpython_drive()
                 default_target = str(drive) if drive is not None else ""
@@ -682,8 +810,10 @@ def prompt_for_selections() -> WizardSelections:
                 )
                 if target_text:
                     firmware_target = Path(target_text).expanduser()
-        else:
-            print("No matching serial device detected; firmware install will stay manual.")
+        elif auto_detected is None:
+            print(
+                "No serial port chosen; firmware install/copy will be skipped."
+            )
 
     return WizardSelections(
         scope=scope_label,
@@ -696,6 +826,7 @@ def prompt_for_selections() -> WizardSelections:
         firmware_target=firmware_target,
         force_hooks=True,
         pixel_count=pixel_count,
+        serial_port=serial_port,
     )
 
 
@@ -721,6 +852,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--detect-circuitpy-json",
         action="store_true",
         help="Print CIRCUITPY drive auto-detection result as JSON and exit",
+    )
+    parser.add_argument(
+        "--list-ports-json",
+        action="store_true",
+        help="Print every enumerable serial port as JSON and exit",
     )
     parser.add_argument(
         "--from-json",
@@ -761,6 +897,54 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _format_summary(
+    result: SetupResult,
+    *,
+    pixel_count: int,
+    scope: str,
+    approve_firmware: bool,
+    chosen_port: str | None = None,
+) -> list[str]:
+    """Render the post-setup summary as a list of stderr-ready lines.
+
+    Extracted from ``run_setup_status_ring_from_args`` so the structured
+    block stays unit-testable and easy to tweak without touching argparse
+    plumbing. Returns blank-line-separated lines in display order.
+
+    ``chosen_port`` is the value of ``WizardSelections.serial_port`` (the
+    port the user explicitly picked or kept). When it matches
+    ``result.detected_port`` the row is labeled "chosen" rather than
+    "auto-detected", so the tail honestly reflects the user's decision.
+    """
+    rows: list[tuple[str, str]] = []
+    rows.append(("Venv", str(result.plan.venv_dir)))
+    rows.append(("Scope", scope))
+    rows.append(("Ring size", f"{pixel_count} LEDs"))
+    if result.detected_port:
+        if chosen_port is not None and chosen_port == result.detected_port:
+            suffix = "chosen"
+        else:
+            suffix = "auto-detected"
+        rows.append(("Serial port", f"{result.detected_port} ({suffix})"))
+    if result.firmware_written:
+        files_label = ", ".join(path.name for path in result.firmware_written)
+        rows.append(("Firmware copied", files_label))
+    elif result.firmware_prepared_dir is not None:
+        rows.append(("Firmware prepared", str(result.firmware_prepared_dir)))
+    elif approve_firmware:
+        rows.append(("Firmware", "prepared (follow manual runtime steps)"))
+    if result.config_written is not None:
+        rows.append(("Config", str(result.config_written)))
+
+    label_width = max(len(label) for label, _ in rows)
+    lines = ["Setup complete."]
+    for label, value in rows:
+        lines.append(f"  {label.ljust(label_width)}  {value}")
+    for warning in result.firmware_warnings:
+        lines.append(f"  Warning: {warning}")
+    return lines
+
+
 def run_setup_status_ring_from_args(args: argparse.Namespace) -> bool:
     """Run the setup-status-ring command from parsed argparse arguments."""
     try:
@@ -772,6 +956,9 @@ def run_setup_status_ring_from_args(args: argparse.Namespace) -> bool:
             return True
         if args.detect_circuitpy_json:
             print(json.dumps(detect_circuitpy_payload(), indent=2))
+            return True
+        if args.list_ports_json:
+            print(json.dumps(list_ports_payload(), indent=2))
             return True
 
         selections = (
@@ -794,27 +981,16 @@ def run_setup_status_ring_from_args(args: argparse.Namespace) -> bool:
             return False
 
         result = execute_setup_plan(plan, skip_install=args.skip_install)
-        print(f"Setup complete. Venv: {result.plan.venv_dir}", file=sys.stderr)
-        if result.detected_port:
-            print(f"Detected serial port: {result.detected_port}", file=sys.stderr)
-        if result.firmware_written:
-            for path in result.firmware_written:
-                print(f"Wrote firmware file: {path}", file=sys.stderr)
-            for warning in result.firmware_warnings:
-                print(f"Firmware warning: {warning}", file=sys.stderr)
-        elif result.firmware_prepared_dir is not None:
-            print(f"Prepared firmware files: {result.firmware_prepared_dir}", file=sys.stderr)
-        elif selections.approve_firmware:
-            print(
-                "Firmware was prepared; follow the manual runtime steps if needed.",
-                file=sys.stderr,
-            )
-        if result.config_written is not None:
-            print(
-                f"Wrote ring config: {result.config_written} "
-                f"(pixel_count={selections.pixel_count})",
-                file=sys.stderr,
-            )
+        summary = _format_summary(
+            result,
+            pixel_count=selections.pixel_count,
+            scope=selections.scope,
+            approve_firmware=selections.approve_firmware,
+            chosen_port=selections.serial_port,
+        )
+        print("", file=sys.stderr)
+        for line in summary:
+            print(line, file=sys.stderr)
         return True
     except (KeyError, OSError, subprocess.CalledProcessError, FirmwareInstallError) as exc:
         print(f"setup-status-ring: {exc}", file=sys.stderr)

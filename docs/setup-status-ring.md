@@ -16,13 +16,29 @@ keeping the durable setup logic in the Python package.
 3. Asks whether hooks should be installed globally for all repos or deployed to
    one target repo.
 4. Prompts for the board, firmware runtime, NeoPixel data pin, and ring size
-   (24 / 16 / 12 LEDs) using the current supported-board matrix.
-5. Attempts host USB serial auto-detection when requested.
+   (24 / 16 / 12 LEDs) using the current supported-board matrix. Dismissing
+   the ring-size prompt defaults to **24 LEDs** (the Adafruit NeoPixel Ring
+   24) instead of aborting setup.
+5. Attempts host USB serial auto-detection when requested. After detection
+   the wizard offers three options:
+   - **Use `COMxx` (auto-detected)** — accept the detected port.
+   - **Pick a different port** — choose from every enumerable serial device
+     on the host.
+   - **Skip — keep any existing saved port** — leave the previously saved
+     `serial_port` (if any) untouched.
+
+   When auto-detection finds nothing, the wizard still offers "Pick a port
+   from the list" and "Skip". Firmware approval is asked as an independent
+   prompt regardless of the port choice — CircuitPython firmware writes to
+   the `CIRCUITPY` drive, which is independent of the host's data serial
+   port.
 6. Requires explicit approval before preparing or writing firmware files.
-7. Persists the chosen ring size to `~/.copilot-command-ring.local.json`
-   (global scope) or `<repo>/.copilot-command-ring.local.json` (repo scope) by
-   merging `pixel_count` into any existing config. Picking the default 24 with
-   no existing config file leaves no file behind.
+7. Persists the chosen ring size and serial port to
+   `~/.copilot-command-ring.local.json` (global scope) or
+   `<repo>/.copilot-command-ring.local.json` (repo scope) by merging
+   `pixel_count` (and `serial_port`, if you picked one) into any existing
+   config. Picking the default 24 with no chosen port and no existing file
+   leaves no file behind.
 8. Runs a dry-run simulation command after hooks are installed.
 
 CircuitPython can copy prepared `boot.py` and `code.py` to a detected or supplied
@@ -65,6 +81,7 @@ For non-interactive callers, pass selections as JSON:
   "runtime": "circuitpython",
   "data_pin": "board.GP6",
   "pixel_count": 24,
+  "serial_port": "COM12",
   "auto_detect_port": true,
   "approve_firmware": false,
   "force_hooks": true
@@ -76,7 +93,14 @@ For non-interactive callers, pass selections as JSON:
 the wizard merges your choice into the local JSON config as a side effect, so a
 later run of the host bridge picks it up automatically.
 
+`serial_port` is optional. When set (e.g. `"COM12"`, `"/dev/ttyACM0"`), it is
+persisted into the same local JSON config so the host bridge uses it directly.
+When omitted or `null`, the wizard preserves any pre-existing `serial_port`
+entry instead of overwriting it.
+
 Use `--options-json` to inspect the board/runtime matrix consumed by the
-extension, `--plan-only` to print the commands that would run without
-executing them, and `--venv-dir` / `--package-spec` to override the auto-detected
-defaults (repo-local `.venv` and local-clone install spec).
+extension, `--list-ports-json` to enumerate every host serial port (the
+extension calls this for the manual port picker), `--plan-only` to print the
+commands that would run without executing them, and `--venv-dir` /
+`--package-spec` to override the auto-detected defaults (repo-local `.venv`
+and local-clone install spec).

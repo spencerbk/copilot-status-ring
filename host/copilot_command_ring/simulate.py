@@ -45,27 +45,42 @@ def run_sequence(
     config: Config,
     sequence: list[tuple[str, dict[str, object]]],
     delay: float = 1.5,
-) -> None:
-    """Send each event in *sequence* to the device with a pause between them."""
+    *,
+    quiet: bool = False,
+) -> int:
+    """Send each event in *sequence* to the device with a pause between them.
+
+    When *quiet* is ``True``, suppress the dry-run JSON dump on stdout and the
+    per-event ``[i/N] event -> status`` line on stderr. Callers can inspect the
+    return value (number of failed events) to decide whether to surface
+    diagnostics — useful when the function drives a setup wizard validation
+    step that should be silent on success.
+    """
     log = get_logger()
     total = len(sequence)
+    failures = 0
 
     for idx, (event_name, payload) in enumerate(sequence, start=1):
         message = normalize_event(event_name, payload)
-        if config.dry_run:
+        if config.dry_run and not quiet:
             sys.stdout.write(
                 serialize_message(prepare_message(config, message)).decode("utf-8"),
             )
         ok = send_event(config, message)
-        status = "ok" if ok else "FAIL"
-        print(
-            f"[{idx}/{total}] {event_name} -> {status}",
-            file=sys.stderr,
-        )
+        if not ok:
+            failures += 1
+        if not quiet:
+            status = "ok" if ok else "FAIL"
+            print(
+                f"[{idx}/{total}] {event_name} -> {status}",
+                file=sys.stderr,
+            )
         log.debug("Sent %s (payload=%s)", event_name, payload)
 
         if idx < total:
             time.sleep(delay)
+
+    return failures
 
 
 def main() -> None:
@@ -84,21 +99,40 @@ def main() -> None:
         action="store_true",
         help="Print JSON Lines without sending over serial",
     )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help=(
+            "Suppress per-event JSON and status lines; emit only a one-line "
+            "summary on completion (used by the setup wizard validation step)"
+        ),
+    )
     args = parser.parse_args()
 
     config = load_config()
     if args.dry_run:
         config.dry_run = True
 
-    print(
-        f"Starting simulation ({len(DEFAULT_SEQUENCE)} events, "
-        f"delay={args.delay}s, dry_run={config.dry_run})",
-        file=sys.stderr,
+    total = len(DEFAULT_SEQUENCE)
+    if not args.quiet:
+        print(
+            f"Starting simulation ({total} events, "
+            f"delay={args.delay}s, dry_run={config.dry_run})",
+            file=sys.stderr,
+        )
+
+    failures = run_sequence(
+        config,
+        DEFAULT_SEQUENCE,
+        delay=args.delay,
+        quiet=args.quiet,
     )
 
-    run_sequence(config, DEFAULT_SEQUENCE, delay=args.delay)
-
-    print("Simulation complete.", file=sys.stderr)
+    if args.quiet:
+        suffix = "ok" if failures == 0 else f"{failures} failed"
+        print(f"Simulation complete ({total} events, {suffix}).", file=sys.stderr)
+    else:
+        print("Simulation complete.", file=sys.stderr)
 
 
 if __name__ == "__main__":

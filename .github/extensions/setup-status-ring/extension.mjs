@@ -106,6 +106,76 @@ async function detectCircuitPy(session) {
     }
 }
 
+async function loadPorts(session) {
+    try {
+        const { stdout } = await runPython(["setup-status-ring", "--list-ports-json"]);
+        const parsed = JSON.parse(stdout);
+        return Array.isArray(parsed.ports) ? parsed.ports : [];
+    } catch (error) {
+        await session.log(`Serial port enumeration failed: ${error.message}`, {
+            level: "warning",
+        });
+        return [];
+    }
+}
+
+async function pickSerialPort(session, autoDetected) {
+    // 3-option flow when auto-detect found a match, 2-option flow otherwise.
+    // Always offers "Skip" so the user can leave any pre-existing saved port
+    // untouched. Returns the chosen device string (e.g. "COM12") or null
+    // when the user skipped.
+    const USE_DETECTED = "use_detected";
+    const PICK_DIFFERENT = "pick_different";
+    const PICK_FROM_LIST = "pick_from_list";
+    const SKIP = "skip";
+
+    const options = [];
+    if (autoDetected) {
+        options.push({ label: `Use ${autoDetected} (auto-detected)`, value: USE_DETECTED });
+        options.push({ label: "Pick a different port", value: PICK_DIFFERENT });
+    } else {
+        options.push({ label: "Pick a port from the list", value: PICK_FROM_LIST });
+    }
+    options.push({ label: "Skip — keep any existing saved port", value: SKIP });
+
+    const decisionLabel = await session.ui.select(
+        "How should the ring's serial port be configured?",
+        options.map((option) => option.label),
+    );
+    if (!decisionLabel) {
+        // Dismiss => skip (do not abort the wizard).
+        await session.log("Port selection skipped; keeping any existing saved port.");
+        return null;
+    }
+    const decision = optionByLabel(options, decisionLabel);
+    if (decision === USE_DETECTED) return autoDetected;
+    if (decision === SKIP) return null;
+
+    const ports = await loadPorts(session);
+    if (ports.length === 0) {
+        await session.log(
+            "No serial ports could be enumerated. Skipping port selection.",
+            { level: "warning" },
+        );
+        return null;
+    }
+    const portItems = ports.map((entry) => ({
+        label: entry.description
+            ? `${entry.device} — ${entry.description}`
+            : entry.device,
+        value: entry.device,
+    }));
+    const portLabel = await session.ui.select(
+        "Which serial port should the ring use?",
+        portItems.map((item) => item.label),
+    );
+    if (!portLabel) {
+        await session.log("No port chosen; keeping any existing saved port.");
+        return null;
+    }
+    return optionByLabel(portItems, portLabel);
+}
+
 function optionByLabel(items, label) {
     const found = items.find((item) => item.label === label);
     if (!found) {
@@ -181,35 +251,51 @@ async function collectSelections(session) {
         "Which ring size do you have?",
         pixelOptions.map((option) => option.label),
     );
-    if (!pixelLabel) return null;
-    const pixelCount = pixelOptions.find((option) => option.label === pixelLabel).value;
+    let pixelCount;
+    if (!pixelLabel) {
+        // Don't abort the entire wizard if the user dismisses this prompt —
+        // ring size has a sensible default (24 LEDs, the Adafruit Ring 24).
+        // The setup wizard previously silently bailed here, which made it
+        // look like the prompt never ran. Fail open instead.
+        pixelCount = 24;
+        await session.log("Ring size defaulted to 24 LEDs (Adafruit Ring 24).");
+    } else {
+        pixelCount = pixelOptions.find((option) => option.label === pixelLabel).value;
+    }
 
     const autoDetectPort = await session.ui.confirm(
         "Attempt host USB serial auto-detection before setup?",
     );
     let approveFirmware = false;
     let firmwareTarget = null;
+    let serialPort = null;
     if (autoDetectPort) {
         const detection = await detectPort(session);
         if (detection.detected) {
             await session.log(`Detected serial device: ${detection.port}`);
-            approveFirmware = await session.ui.confirm(
-                "Approve writing or preparing firmware for this connected board?",
-            );
-            if (approveFirmware && runtimeId === "circuitpython") {
-                const circuitpy = await detectCircuitPy(session);
-                firmwareTarget = await session.ui.input("CIRCUITPY drive path", {
-                    title: "CircuitPython target drive",
-                    description:
-                        "Leave blank to prepare firmware only and copy it manually later.",
-                    default: circuitpy.path || "",
-                });
-                if (firmwareTarget === "") firmwareTarget = null;
-            }
         } else {
-            await session.log("No matching serial device was detected; firmware upload stays manual.", {
-                level: "warning",
+            await session.log(
+                "No matching serial device was auto-detected.",
+                { level: "warning" },
+            );
+        }
+        serialPort = await pickSerialPort(session, detection.port || null);
+        // Firmware approval is independent of the port choice — CircuitPython
+        // firmware copies to the CIRCUITPY drive, which has no relation to the
+        // host's data serial port. Even when the user skipped the port choice,
+        // they can still approve firmware install.
+        approveFirmware = await session.ui.confirm(
+            "Approve writing or preparing firmware for this connected board?",
+        );
+        if (approveFirmware && runtimeId === "circuitpython") {
+            const circuitpy = await detectCircuitPy(session);
+            firmwareTarget = await session.ui.input("CIRCUITPY drive path", {
+                title: "CircuitPython target drive",
+                description:
+                    "Leave blank to prepare firmware only and copy it manually later.",
+                default: circuitpy.path || "",
             });
+            if (firmwareTarget === "") firmwareTarget = null;
         }
     }
 
@@ -224,6 +310,7 @@ async function collectSelections(session) {
         firmware_target: firmwareTarget,
         force_hooks: true,
         pixel_count: pixelCount,
+        serial_port: serialPort,
     };
 }
 

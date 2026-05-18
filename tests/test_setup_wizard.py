@@ -18,8 +18,10 @@ from copilot_command_ring.setup_wizard import (
     PACKAGE_SPEC_DEFAULT,
     SCOPE_GLOBAL,
     SCOPE_REPO,
+    SetupResult,
     SetupWizardError,
     WizardSelections,
+    _format_summary,
     _write_local_config,
     build_setup_plan,
     default_package_spec,
@@ -529,6 +531,196 @@ def test_write_local_config_recovers_from_corrupt_existing_file(
     assert payload == {"pixel_count": 16}
 
 
+# ── Setup logging: quieter pip, quieter simulate, phase headers, summary ──
+
+
+def test_install_command_passes_quiet_to_pip(tmp_path: Path) -> None:
+    """pip install runs with --quiet so the wizard is silent on success.
+
+    pip's default verbosity dumps ~30 lines per setup. ``--quiet`` keeps only
+    warnings and errors. Combined with ``subprocess.run(check=True)`` in
+    ``_run_checked``, failures still surface fully via the non-zero exit and
+    the captured traceback the caller propagates.
+    """
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+    )
+    plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv", package_spec=".")
+    assert "--quiet" in plan.install_command.command
+
+
+def test_validation_command_passes_quiet_to_simulate(tmp_path: Path) -> None:
+    """The setup-validation simulate run uses --quiet to suppress JSON dump."""
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+    )
+    plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv", package_spec=".")
+    assert "--quiet" in plan.validation_command.command
+
+
+def test_execute_setup_plan_prints_phase_headers(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Each major step prints a `==>` phase header so progress is visible."""
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=False,
+        approve_firmware=False,
+    )
+    plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv", package_spec=".")
+
+    execute_setup_plan(plan, runner=lambda _command: None)
+
+    err = capsys.readouterr().err
+    assert "==> Creating virtual environment" in err
+    assert "==> Installing copilot-command-ring" in err
+    assert "==> Validating event pipeline" in err
+    # Hook command label is the plan's own label, so we just check the phase prefix.
+    assert err.count("==>") >= 4
+
+
+def test_execute_setup_plan_phase_header_for_port_detection(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Port detection is a visible phase when auto_detect_port is on."""
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=True,
+        approve_firmware=False,
+    )
+    plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv", package_spec=".")
+
+    with patch(
+        "copilot_command_ring.setup_wizard.detect_serial_port",
+        return_value=None,
+    ):
+        execute_setup_plan(plan, runner=lambda _command: None)
+
+    err = capsys.readouterr().err
+    assert "==> Detecting host serial port" in err
+
+
+def _bare_result(
+    tmp_path: Path,
+    *,
+    detected_port: str | None = None,
+    firmware_written: tuple[Path, ...] = (),
+    firmware_prepared_dir: Path | None = None,
+    firmware_warnings: tuple[str, ...] = (),
+    config_written: Path | None = None,
+    pixel_count: int = DEFAULT_PIXEL_COUNT,
+    scope: str = SCOPE_GLOBAL,
+) -> SetupResult:
+    """Build a minimal SetupResult around a plan for summary-format tests."""
+    selections = WizardSelections(
+        scope=scope,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=False,
+        pixel_count=pixel_count,
+    )
+    plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv", package_spec=".")
+    return SetupResult(
+        plan=plan,
+        detected_port=detected_port,
+        firmware_written=firmware_written,
+        firmware_prepared_dir=firmware_prepared_dir,
+        firmware_warnings=firmware_warnings,
+        config_written=config_written,
+    )
+
+
+def test_format_summary_minimal_setup(tmp_path: Path) -> None:
+    """Bare summary shows the venv path, scope, and ring size only."""
+    result = _bare_result(tmp_path)
+    lines = _format_summary(
+        result,
+        pixel_count=DEFAULT_PIXEL_COUNT,
+        scope=SCOPE_GLOBAL,
+        approve_firmware=False,
+    )
+    assert lines[0] == "Setup complete."
+    body = "\n".join(lines[1:])
+    assert "Venv" in body
+    assert str(result.plan.venv_dir) in body
+    assert "Scope" in body and SCOPE_GLOBAL in body
+    assert "24 LEDs" in body
+    assert "Serial port" not in body
+    assert "Firmware" not in body
+    assert "Config" not in body
+
+
+def test_format_summary_includes_detected_port_and_firmware(tmp_path: Path) -> None:
+    """Optional rows render only when their fields are populated."""
+    target = tmp_path / "CIRCUITPY"
+    written = (target / "boot.py", target / "code.py")
+    config_path = tmp_path / ".copilot-command-ring.local.json"
+    result = _bare_result(
+        tmp_path,
+        detected_port="COM12",
+        firmware_written=written,
+        config_written=config_path,
+        pixel_count=16,
+    )
+    lines = _format_summary(
+        result,
+        pixel_count=16,
+        scope=SCOPE_GLOBAL,
+        approve_firmware=True,
+    )
+    body = "\n".join(lines)
+    assert "Serial port" in body and "COM12" in body
+    assert "Firmware copied" in body and "boot.py" in body and "code.py" in body
+    assert "Config" in body and str(config_path) in body
+    assert "16 LEDs" in body
+
+
+def test_format_summary_reports_prepared_firmware_dir(tmp_path: Path) -> None:
+    """When firmware is prepared (not copied), surface the prepared directory."""
+    prepared = tmp_path / "prepared"
+    result = _bare_result(tmp_path, firmware_prepared_dir=prepared)
+    lines = _format_summary(
+        result,
+        pixel_count=DEFAULT_PIXEL_COUNT,
+        scope=SCOPE_GLOBAL,
+        approve_firmware=True,
+    )
+    body = "\n".join(lines)
+    assert "Firmware prepared" in body
+    assert str(prepared) in body
+
+
+def test_format_summary_renders_firmware_warnings_after_rows(tmp_path: Path) -> None:
+    """Firmware warnings appear as their own lines, after the main key/value rows."""
+    result = _bare_result(
+        tmp_path,
+        firmware_written=(tmp_path / "boot.py",),
+        firmware_warnings=("circup failed",),
+    )
+    lines = _format_summary(
+        result,
+        pixel_count=DEFAULT_PIXEL_COUNT,
+        scope=SCOPE_GLOBAL,
+        approve_firmware=True,
+    )
+    assert any("Warning: circup failed" in line for line in lines)
+
+
 def test_execute_setup_plan_records_config_written_for_non_default(
     tmp_path: Path,
     _isolate_user_home: Path,
@@ -552,3 +744,448 @@ def test_execute_setup_plan_skips_config_for_default_pixel_count(
 
     assert result.config_written is None
     assert not (_isolate_user_home / CONFIG_FILE_NAME).exists()
+
+
+# ── Serial port plumbing: WizardSelections + selections_from_mapping ──────
+
+
+def test_selections_from_json_parses_serial_port() -> None:
+    selections = selections_from_json(
+        '{"scope":"global","board_id":"raspberry-pi-pico",'
+        '"runtime":"circuitpython","serial_port":"COM12"}'
+    )
+    assert selections.serial_port == "COM12"
+
+
+def test_selections_from_json_normalizes_blank_serial_port() -> None:
+    selections = selections_from_json(
+        '{"scope":"global","board_id":"raspberry-pi-pico",'
+        '"runtime":"circuitpython","serial_port":"  "}'
+    )
+    assert selections.serial_port is None
+
+
+def test_selections_from_json_normalizes_null_serial_port() -> None:
+    selections = selections_from_json(
+        '{"scope":"global","board_id":"raspberry-pi-pico",'
+        '"runtime":"circuitpython","serial_port":null}'
+    )
+    assert selections.serial_port is None
+
+
+def test_wizard_selections_to_dict_includes_serial_port() -> None:
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=True,
+        serial_port="COM7",
+    )
+    payload = selections.to_dict()
+    assert payload["serial_port"] == "COM7"
+
+
+# ── _write_local_config: serial_port persistence ──────────────────────────
+
+
+def test_write_local_config_persists_chosen_serial_port(_isolate_user_home: Path) -> None:
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=True,
+        pixel_count=DEFAULT_PIXEL_COUNT,
+        serial_port="COM12",
+    )
+    written = _write_local_config(selections)
+    assert written == _isolate_user_home / CONFIG_FILE_NAME
+    payload = json.loads(written.read_text(encoding="utf-8"))
+    # serial_port writes even when pixel_count is the default and no file
+    # pre-existed — the explicit port choice is itself a reason to persist.
+    assert payload == {"pixel_count": DEFAULT_PIXEL_COUNT, "serial_port": "COM12"}
+
+
+def test_write_local_config_skips_when_no_port_and_default_pixels(
+    _isolate_user_home: Path,
+) -> None:
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=False,
+        pixel_count=DEFAULT_PIXEL_COUNT,
+        serial_port=None,
+    )
+    assert _write_local_config(selections) is None
+    assert not (_isolate_user_home / CONFIG_FILE_NAME).exists()
+
+
+def test_write_local_config_preserves_existing_port_on_skip(
+    _isolate_user_home: Path,
+) -> None:
+    """When the user skips port selection, the existing saved port stays put."""
+    target = _isolate_user_home / CONFIG_FILE_NAME
+    target.write_text(
+        json.dumps({"serial_port": "COM3", "pixel_count": 24}) + "\n",
+        encoding="utf-8",
+    )
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=True,
+        pixel_count=DEFAULT_PIXEL_COUNT,
+        serial_port=None,
+    )
+    written = _write_local_config(selections)
+    assert written == target
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload == {"serial_port": "COM3", "pixel_count": DEFAULT_PIXEL_COUNT}
+
+
+def test_write_local_config_overrides_existing_port_with_chosen(
+    _isolate_user_home: Path,
+) -> None:
+    target = _isolate_user_home / CONFIG_FILE_NAME
+    target.write_text(
+        json.dumps({"serial_port": "COM3"}) + "\n",
+        encoding="utf-8",
+    )
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=True,
+        pixel_count=DEFAULT_PIXEL_COUNT,
+        serial_port="COM12",
+    )
+    written = _write_local_config(selections)
+    payload = json.loads(written.read_text(encoding="utf-8"))
+    assert payload["serial_port"] == "COM12"
+
+
+# ── --list-ports-json argparse path ───────────────────────────────────────
+
+
+def test_list_ports_payload_returns_pyserial_entries() -> None:
+    from copilot_command_ring.setup_wizard import list_ports_payload
+
+    with patch(
+        "copilot_command_ring.setup_wizard.list_serial_ports",
+        return_value=[
+            {"device": "COM3", "description": "USB Serial Device"},
+            {"device": "COM12", "description": "CircuitPython CDC"},
+        ],
+    ):
+        payload = list_ports_payload()
+
+    assert payload == {
+        "ports": [
+            {"device": "COM3", "description": "USB Serial Device"},
+            {"device": "COM12", "description": "CircuitPython CDC"},
+        ],
+    }
+
+
+def test_run_setup_status_ring_handles_list_ports_json(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import argparse
+
+    from copilot_command_ring.setup_wizard import (
+        add_arguments,
+        run_setup_status_ring_from_args,
+    )
+
+    parser = argparse.ArgumentParser()
+    add_arguments(parser)
+    args = parser.parse_args(["--list-ports-json"])
+    with patch(
+        "copilot_command_ring.setup_wizard.list_serial_ports",
+        return_value=[{"device": "COM5", "description": "Test Device"}],
+    ):
+        ok = run_setup_status_ring_from_args(args)
+    assert ok is True
+    stdout = capsys.readouterr().out
+    parsed = json.loads(stdout)
+    assert parsed == {"ports": [{"device": "COM5", "description": "Test Device"}]}
+
+
+# ── execute_setup_plan prefers explicit serial_port over auto-detect ──────
+
+
+def test_execute_setup_plan_prefers_explicit_serial_port_over_autodetect(
+    tmp_path: Path,
+) -> None:
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=True,
+        serial_port="COM7",
+        pixel_count=DEFAULT_PIXEL_COUNT,
+    )
+    plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv", package_spec=".")
+
+    # Sanity: detect_serial_port must NOT be called when an explicit port is
+    # already on the selections — re-detecting would defeat the user's choice.
+    with patch(
+        "copilot_command_ring.setup_wizard.detect_serial_port",
+    ) as detect_mock:
+        result = execute_setup_plan(plan, runner=lambda _command: None)
+
+    assert result.detected_port == "COM7"
+    detect_mock.assert_not_called()
+
+
+def test_format_summary_labels_chosen_port_distinctly(tmp_path: Path) -> None:
+    """When the summary's port matches the user's choice, label says 'chosen'."""
+    result = _bare_result(tmp_path, detected_port="COM7")
+    lines = _format_summary(
+        result,
+        pixel_count=DEFAULT_PIXEL_COUNT,
+        scope=SCOPE_GLOBAL,
+        approve_firmware=False,
+        chosen_port="COM7",
+    )
+    body = "\n".join(lines)
+    assert "COM7 (chosen)" in body
+    assert "auto-detected" not in body
+
+
+# ── Interactive port picker flow ──────────────────────────────────────────
+
+
+def test_prompt_for_selections_picks_alternate_port_when_autodetect_matches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Stdin sequence:
+    #   1\n          → scope: global
+    #   1\n          → board: first option
+    #   <enter>      → runtime: default
+    #   <enter>      → data pin: default
+    #   <enter>      → ring size: default (24)
+    #   y\n          → auto-detect serial: yes
+    #   2\n          → port flow: "Pick a different port"
+    #   2\n          → port list: pick second entry (COM12)
+    #   n\n          → approve firmware? no
+    stdin = StringIO("1\n1\n\n\n\ny\n2\n2\nn\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    with (
+        patch(
+            "copilot_command_ring.setup_wizard.detect_serial_port",
+            return_value="COM3",
+        ),
+        patch(
+            "copilot_command_ring.setup_wizard.list_serial_ports",
+            return_value=[
+                {"device": "COM3", "description": "Generic USB"},
+                {"device": "COM12", "description": "CircuitPython"},
+            ],
+        ),
+    ):
+        selections = prompt_for_selections()
+
+    assert selections.auto_detect_port is True
+    assert selections.serial_port == "COM12"
+    assert selections.approve_firmware is False
+
+
+def test_prompt_for_selections_uses_autodetected_port_when_user_accepts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Choose option 1 at the port-decision prompt ("Use COM3 (auto-detected)").
+    stdin = StringIO("1\n1\n\n\n\ny\n1\nn\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    with (
+        patch(
+            "copilot_command_ring.setup_wizard.detect_serial_port",
+            return_value="COM3",
+        ),
+        patch(
+            "copilot_command_ring.setup_wizard.list_serial_ports",
+            return_value=[{"device": "COM3", "description": "Generic"}],
+        ),
+    ):
+        selections = prompt_for_selections()
+    assert selections.serial_port == "COM3"
+
+
+def test_prompt_for_selections_skip_keeps_no_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Choose option 3 ("Skip") on the port-decision prompt.
+    stdin = StringIO("1\n1\n\n\n\ny\n3\nn\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    with (
+        patch(
+            "copilot_command_ring.setup_wizard.detect_serial_port",
+            return_value="COM3",
+        ),
+        patch(
+            "copilot_command_ring.setup_wizard.list_serial_ports",
+            return_value=[{"device": "COM3", "description": "Generic"}],
+        ),
+    ):
+        selections = prompt_for_selections()
+    assert selections.serial_port is None
+
+
+def test_prompt_for_selections_picks_port_when_autodetect_misses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # detect_serial_port returns None → 2-option port flow:
+    #   1 = "Pick a port from the list"
+    #   2 = "Skip — keep any existing saved port"
+    # User picks option 1, then chooses the first listed port.
+    stdin = StringIO("1\n1\n\n\n\ny\n1\n1\nn\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    with (
+        patch(
+            "copilot_command_ring.setup_wizard.detect_serial_port",
+            return_value=None,
+        ),
+        patch(
+            "copilot_command_ring.setup_wizard.list_serial_ports",
+            return_value=[{"device": "COM9", "description": "Pico"}],
+        ),
+    ):
+        selections = prompt_for_selections()
+    assert selections.serial_port == "COM9"
+
+
+def test_prompt_for_selections_no_ports_at_all_skips_silently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # autodetect None + empty list_serial_ports → port picker skips, but the
+    # wizard does not abort.
+    stdin = StringIO("1\n1\n\n\n\ny\nn\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    with (
+        patch(
+            "copilot_command_ring.setup_wizard.detect_serial_port",
+            return_value=None,
+        ),
+        patch(
+            "copilot_command_ring.setup_wizard.list_serial_ports",
+            return_value=[],
+        ),
+    ):
+        selections = prompt_for_selections()
+    assert selections.serial_port is None
+    assert selections.auto_detect_port is True
+
+
+# ── list_serial_ports() unit tests ────────────────────────────────────────
+
+
+def test_list_serial_ports_returns_sorted_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`list_serial_ports` returns entries sorted by device."""
+    import types
+
+    from copilot_command_ring import detect_ports
+
+    class _Port:
+        def __init__(self, device: str, description: str) -> None:
+            self.device = device
+            self.description = description
+
+    fake_serial = types.ModuleType("serial")
+    fake_tools = types.ModuleType("serial.tools")
+    fake_list_ports = types.ModuleType("serial.tools.list_ports")
+    fake_list_ports.comports = lambda: [
+        _Port("COM12", "Z device"),
+        _Port("COM3", "A device"),
+        _Port("COM1", "First device"),
+    ]
+    monkeypatch.setitem(__import__("sys").modules, "serial", fake_serial)
+    monkeypatch.setitem(__import__("sys").modules, "serial.tools", fake_tools)
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "serial.tools.list_ports",
+        fake_list_ports,
+    )
+
+    entries = detect_ports.list_serial_ports()
+    # Sort is lexicographic by device, matching the implementation.
+    assert entries == [
+        {"device": "COM1", "description": "First device"},
+        {"device": "COM12", "description": "Z device"},
+        {"device": "COM3", "description": "A device"},
+    ]
+
+
+def test_list_serial_ports_skips_entries_without_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ports with empty/missing device attribute are filtered out."""
+    import types
+
+    from copilot_command_ring import detect_ports
+
+    class _Port:
+        def __init__(self, device: str, description: str) -> None:
+            self.device = device
+            self.description = description
+
+    fake_list_ports = types.ModuleType("serial.tools.list_ports")
+    fake_list_ports.comports = lambda: [
+        _Port("", "no device id"),
+        _Port("COM5", "real device"),
+    ]
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "serial.tools.list_ports",
+        fake_list_ports,
+    )
+
+    entries = detect_ports.list_serial_ports()
+    assert entries == [{"device": "COM5", "description": "real device"}]
+
+
+def test_list_serial_ports_returns_empty_when_pyserial_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without pyserial the picker collapses to skip, never crashes."""
+    import builtins
+
+    from copilot_command_ring import detect_ports
+
+    real_import = builtins.__import__
+
+    def fake_import(name: str, *args, **kwargs):
+        if name.startswith("serial"):
+            raise ImportError(name)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    assert detect_ports.list_serial_ports() == []
+
+
+def test_list_serial_ports_returns_empty_when_enumeration_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If pyserial's comports() raises, list_serial_ports swallows and returns []."""
+    import types
+
+    from copilot_command_ring import detect_ports
+
+    def _boom():
+        raise RuntimeError("driver failure")
+
+    fake_list_ports = types.ModuleType("serial.tools.list_ports")
+    fake_list_ports.comports = _boom
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "serial.tools.list_ports",
+        fake_list_ports,
+    )
+    assert detect_ports.list_serial_ports() == []

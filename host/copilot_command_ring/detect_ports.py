@@ -104,3 +104,40 @@ def detect_serial_port(config: Config) -> str | None:
         _usb_interface_number(port),
     )
     return port.device
+
+
+def list_serial_ports() -> list[dict[str, str]]:
+    """Return every serial port the host can enumerate, unfiltered.
+
+    Each entry has a ``device`` (e.g. ``COM12`` / ``/dev/ttyUSB0``) and a
+    ``description`` (human-readable string from pyserial). Returns an empty
+    list when ``pyserial`` is not installed or enumeration fails — callers
+    must handle the empty case (no exception is raised). This is what the
+    setup wizard's manual port picker consumes when auto-detect doesn't find
+    a match or the user wants to override it.
+    """
+    log = get_logger()
+
+    try:
+        from serial.tools.list_ports import comports  # noqa: PLC0415
+    except ImportError:
+        log.debug(
+            "pyserial is not installed; serial port enumeration unavailable",
+        )
+        return []
+
+    try:
+        ports = list(comports())
+    except Exception:  # noqa: BLE001
+        log.debug("Failed to enumerate serial ports", exc_info=True)
+        return []
+
+    entries: list[dict[str, str]] = []
+    for port in ports:
+        device = getattr(port, "device", "") or ""
+        description = getattr(port, "description", "") or ""
+        if not device:
+            continue
+        entries.append({"device": device, "description": description})
+    entries.sort(key=lambda entry: entry["device"])
+    return entries
