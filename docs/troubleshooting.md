@@ -414,6 +414,10 @@ The host bridge sends `pixel_count` to the firmware in every message and the fir
 
 The firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT` (Arduino) is `24`, used only for the startup wipe before the first host message arrives. `setup-status-ring` rewrites that constant in the copied source when you flash through the wizard, so the wipe already matches your ring. If you flash without the wizard, edit `NUM_PIXELS` / `#define PIXEL_COUNT` to your ring size before uploading for a perfectly clean boot animation.
 
+**The host keeps sending the wrong `pixel_count` even though you saved a new one in the wizard:**
+
+The host loads `.copilot-command-ring.local.json` by walking up from the current working directory and, if it finds nothing in that chain, falling back to `~/.copilot-command-ring.local.json` (where the wizard's "global" scope writes). A per-repo file always wins over the home-level one. If the wizard saved `pixel_count: 16` globally but your ring is still showing the 24-LED-default spinner pattern (segment shrinks at the end of a sweep, then grows back from zero), check whether a stale `<repo>/.copilot-command-ring.local.json` is shadowing the global file — these are `.gitignore`d, so a leftover from earlier experimentation is easy to miss. Either delete the per-repo file or update its `pixel_count` to match your ring.
+
 **Check data pin:**
 
 Make sure the data pin in the firmware matches the pin you've wired. The CircuitPython firmware auto-detects the correct pin for supported boards (e.g. `board.GP6` on Pico, `board.D6` on Feather/XIAO, `board.A0` on QT Py). The MicroPython firmware auto-detects only RP2040/RP2350-family boards wired to GPIO 6; other boards require a manual `NEOPIXEL_PIN` override in `main.py`. See [the hardware guide](hardware.md) for the full pin table.

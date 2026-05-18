@@ -50,13 +50,40 @@ def find_config_path(start: Path) -> Path | None:
     Returns the first match or ``None``. Public so diagnostic tools
     (``copilot-command-ring doctor``) can report exactly which file
     was loaded.
+
+    If the parent-chain walk finds nothing, falls back to
+    ``~/<CONFIG_FILE_NAME>`` — the well-known location the setup
+    wizard writes for the global scope. Without this fallback, the
+    wizard's "saved globally" promise only works when the current
+    working directory lives under the user's home tree.
     """
+    cwd_hit = _find_config_in_cwd_chain(start)
+    if cwd_hit is not None:
+        return cwd_hit
+    return _find_config_in_home()
+
+
+def _find_config_in_cwd_chain(start: Path) -> Path | None:
+    """Walk *start* and its parents, returning the first config file."""
     current = start.resolve()
     for directory in (current, *current.parents):
         candidate = directory / CONFIG_FILE_NAME
         if candidate.is_file():
             return candidate
     return None
+
+
+def _find_config_in_home() -> Path | None:
+    """Return ``~/<CONFIG_FILE_NAME>`` if it exists, else ``None``.
+
+    Tolerates platforms where ``Path.home()`` cannot resolve a home
+    directory (raises ``RuntimeError`` or ``OSError``).
+    """
+    try:
+        candidate = Path.home() / CONFIG_FILE_NAME
+    except (RuntimeError, OSError):
+        return None
+    return candidate if candidate.is_file() else None
 
 
 @dataclass

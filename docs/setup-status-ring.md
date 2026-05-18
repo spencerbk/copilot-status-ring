@@ -42,7 +42,13 @@ keeping the durable setup logic in the Python package.
    `<repo>/.copilot-command-ring.local.json` (repo scope) by merging
    `pixel_count` (and `serial_port`, if you picked one) into any existing
    config. Picking the default 24 with no chosen port and no existing file
-   leaves no file behind.
+   leaves no file behind. **Precedence:** at hook time the host walks
+   parents of the working directory first and uses any per-repo file it
+   finds; only when no per-repo file exists does it fall back to the
+   global `~/.copilot-command-ring.local.json`. A stale per-repo file
+   will silently shadow the wizard's globally-saved choice — see
+   ["The host keeps sending the wrong pixel_count"](troubleshooting.md#animations-look-wrong)
+   for recovery.
 8. Runs a dry-run simulation command after hooks are installed.
 
 CircuitPython can copy prepared `boot.py` and `code.py` to a detected or supplied
