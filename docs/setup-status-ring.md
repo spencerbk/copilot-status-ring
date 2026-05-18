@@ -33,6 +33,10 @@ keeping the durable setup logic in the Python package.
    the `CIRCUITPY` drive, which is independent of the host's data serial
    port.
 6. Requires explicit approval before preparing or writing firmware files.
+   The chosen ring size is templated into the copied source — `NUM_PIXELS`
+   for CircuitPython/MicroPython and `#define PIXEL_COUNT` in the Arduino
+   `copilot_types.h` header — so the firmware boots with the correct LED
+   count even before the host bridge has sent its first message.
 7. Persists the chosen ring size and serial port to
    `~/.copilot-command-ring.local.json` (global scope) or
    `<repo>/.copilot-command-ring.local.json` (repo scope) by merging

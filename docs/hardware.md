@@ -56,7 +56,7 @@ The host bridge sends `pixel_count` in every message, and all three firmware var
 
 You can also override outside the wizard by setting `COPILOT_RING_PIXEL_COUNT` or editing the `pixel_count` field in your local JSON config. The spinner segment auto-scales to ~25% of the ring (with a floor of 2 LEDs) at any size.
 
-> **Startup wipe note:** The firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT` (Arduino) is `24`. Until the first host message arrives after boot, the startup wipe assumes a 24-LED ring. On a 16- or 12-LED ring, the wipe still works — the firmware just writes a few extra bytes that vanish into the wire — but for a perfectly clean boot animation, edit `NUM_PIXELS` / `PIXEL_COUNT` in the firmware to match your ring before flashing.
+> **Startup wipe note:** The firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT` (Arduino) is `24`. When you flash through `setup-status-ring`, the wizard rewrites that constant in the copied source so the boot wipe already matches your ring. If you flash without the wizard, edit `NUM_PIXELS` / `#define PIXEL_COUNT` to your ring size before uploading — otherwise the wipe will assume 24 LEDs until the first host message arrives.
 
 ---
 

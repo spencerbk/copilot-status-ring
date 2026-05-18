@@ -25,7 +25,7 @@ from .boards import (
     options_payload,
 )
 from .config import Config
-from .constants import CONFIG_FILE_NAME, DEFAULT_PIXEL_COUNT
+from .constants import CONFIG_FILE_NAME, DEFAULT_PIXEL_COUNT, MAX_PIXEL_COUNT
 from .detect_ports import detect_serial_port, list_serial_ports
 from .firmware_install import (
     FirmwareInstallError,
@@ -256,8 +256,9 @@ def _coerce_pixel_count(value: object) -> int:
     """Validate and coerce a wizard-input pixel count.
 
     Accepts ``None`` / missing (default to ``DEFAULT_PIXEL_COUNT``), positive
-    integers, and integer-valued strings. Rejects booleans, non-positive
-    values, and anything else.
+    integers up to ``MAX_PIXEL_COUNT``, and integer-valued strings within the
+    same range. Rejects booleans, non-positive values, oversized values, and
+    anything else.
     """
     if value is None or value == "":
         return DEFAULT_PIXEL_COUNT
@@ -274,6 +275,10 @@ def _coerce_pixel_count(value: object) -> int:
     if coerced <= 0:
         raise SetupWizardError(
             f"pixel_count must be a positive integer, got {value!r}"
+        )
+    if coerced > MAX_PIXEL_COUNT:
+        raise SetupWizardError(
+            f"pixel_count must be <= {MAX_PIXEL_COUNT}, got {coerced}"
         )
     return coerced
 
@@ -581,6 +586,7 @@ def execute_setup_plan(
                     plan.selections.runtime,
                     plan.selections.data_pin,
                     Path(temp_dir),
+                    pixel_count=plan.selections.pixel_count,
                 )
                 if plan.selections.runtime == RUNTIME_CIRCUITPYTHON:
                     if plan.selections.firmware_target is not None:
@@ -601,6 +607,7 @@ def execute_setup_plan(
                 plan.selections.runtime,
                 plan.selections.data_pin,
                 persistent_output,
+                pixel_count=plan.selections.pixel_count,
             )
             prepared_dir = prepared.directory
             if plan.selections.runtime == RUNTIME_CIRCUITPYTHON:

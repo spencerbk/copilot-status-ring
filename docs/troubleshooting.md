@@ -412,7 +412,7 @@ LEDs are lighting up but the patterns are incorrect.
 
 The host bridge sends `pixel_count` to the firmware in every message and the firmware applies it at runtime, so you don't need to reflash for a different ring size. The easiest way to set it is the setup wizard (`setup-status-ring`), which prompts for 24 / 16 / 12 LEDs and writes the choice into `.copilot-command-ring.local.json`. You can also set `pixel_count` directly in that file or via the `COPILOT_RING_PIXEL_COUNT` environment variable. The spinner segment auto-scales to ~25 % of the ring (with a 2-LED floor), so only the ring size needs to match — animations adapt automatically.
 
-The firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT` (Arduino) is `24`, used only for the startup wipe before the first host message arrives. On a 16- or 12-LED ring the wipe still works, but for a perfectly clean boot animation, edit that constant in firmware to match your ring before flashing.
+The firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT` (Arduino) is `24`, used only for the startup wipe before the first host message arrives. `setup-status-ring` rewrites that constant in the copied source when you flash through the wizard, so the wipe already matches your ring. If you flash without the wizard, edit `NUM_PIXELS` / `#define PIXEL_COUNT` to your ring size before uploading for a perfectly clean boot animation.
 
 **Check data pin:**
 

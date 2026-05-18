@@ -289,7 +289,7 @@ Auto-detection compares each serial device description against `device_match.des
 
 Unknown values are logged and normalized back to `breathing`.
 
-`brightness` and `pixel_count` are included in every host → firmware message. Current firmware variants apply them at runtime after the first host message arrives; the startup wipe still uses the firmware/sketch defaults until then.
+`brightness` and `pixel_count` are included in every host → firmware message. Current firmware variants apply them at runtime after the first host message arrives. `pixel_count` is also baked into the copied firmware by `setup-status-ring` (it rewrites `NUM_PIXELS` for CircuitPython/MicroPython and `#define PIXEL_COUNT` for Arduino) so the startup wipe already matches the ring size. `brightness` still uses the firmware default until the first host message arrives.
 
 ## Hook Event Mapping
 

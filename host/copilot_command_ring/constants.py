@@ -52,6 +52,10 @@ DEFAULT_SERIAL_WRITE_TIMEOUT: Final[float] = 0.3
 DEFAULT_LOCK_TIMEOUT: Final[float] = 1.0
 DEFAULT_IDLE_MODE: Final[str] = "breathing"
 DEFAULT_PIXEL_COUNT: Final[int] = 24
+# Maximum pixel_count accepted by the host wizard. Mirrors the firmware-side
+# MAX_RUNTIME_PIXELS guard so we never bake a boot-time NUM_PIXELS that would
+# exceed the runtime allocation cap.
+MAX_PIXEL_COUNT: Final[int] = 512
 
 # ---------------------------------------------------------------------------
 # Idle-mode values (carried in each outgoing message so the firmware can

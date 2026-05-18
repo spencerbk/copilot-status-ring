@@ -67,6 +67,42 @@ def test_prepare_arduino_patches_header(tmp_path: Path) -> None:
     assert (prepared.directory / "copilot_command_ring.ino").is_file()
 
 
+def test_prepare_circuitpython_patches_num_pixels(tmp_path: Path) -> None:
+    prepare_firmware_files(RUNTIME_CIRCUITPYTHON, "board.D6", tmp_path, pixel_count=16)
+    code_text = (tmp_path / "code.py").read_text(encoding="utf-8")
+    assert "NUM_PIXELS = 16" in code_text
+    assert "NUM_PIXELS = 24" not in code_text
+
+
+def test_prepare_micropython_patches_num_pixels(tmp_path: Path) -> None:
+    prepare_firmware_files(RUNTIME_MICROPYTHON, "Pin(6)", tmp_path, pixel_count=12)
+    main_text = (tmp_path / "main.py").read_text(encoding="utf-8")
+    assert "NUM_PIXELS = 12" in main_text
+    assert "NUM_PIXELS = 24" not in main_text
+
+
+def test_prepare_arduino_patches_pixel_count(tmp_path: Path) -> None:
+    prepared = prepare_firmware_files(RUNTIME_ARDUINO, "6", tmp_path, pixel_count=16)
+    header_text = (prepared.directory / "copilot_types.h").read_text(encoding="utf-8")
+    assert "#define PIXEL_COUNT       16" in header_text
+    assert "#define PIXEL_COUNT       24" not in header_text
+
+
+def test_prepare_firmware_default_pixel_count_preserves_24(tmp_path: Path) -> None:
+    # Default DEFAULT_PIXEL_COUNT (24) keeps the source's literal value.
+    cp_dir = tmp_path / "cp"
+    mp_dir = tmp_path / "mp"
+    ino_dir = tmp_path / "ino"
+    prepare_firmware_files(RUNTIME_CIRCUITPYTHON, "board.D6", cp_dir)
+    prepare_firmware_files(RUNTIME_MICROPYTHON, "Pin(6)", mp_dir)
+    prepared = prepare_firmware_files(RUNTIME_ARDUINO, "6", ino_dir)
+    assert "NUM_PIXELS = 24" in (cp_dir / "code.py").read_text(encoding="utf-8")
+    assert "NUM_PIXELS = 24" in (mp_dir / "main.py").read_text(encoding="utf-8")
+    assert "#define PIXEL_COUNT       24" in (
+        prepared.directory / "copilot_types.h"
+    ).read_text(encoding="utf-8")
+
+
 def test_install_circuitpython_files_copies_prepared_files(tmp_path: Path) -> None:
     prepared_dir = tmp_path / "prepared"
     target = tmp_path / "CIRCUITPY"

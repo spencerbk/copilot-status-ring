@@ -334,6 +334,30 @@ def test_manual_firmware_preparation_uses_persistent_output(tmp_path: Path) -> N
     assert (tmp_path / "manual" / "code.py").is_file()
 
 
+def test_manual_firmware_preparation_templates_chosen_pixel_count(
+    tmp_path: Path,
+) -> None:
+    # End-to-end: execute_setup_plan must thread selections.pixel_count into
+    # prepare_firmware_files so the static firmware boots with the chosen ring
+    # size, not just adapt at runtime via host messages.
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        auto_detect_port=False,
+        approve_firmware=True,
+        firmware_target=None,
+        pixel_count=16,
+    )
+    plan = build_setup_plan(selections, venv_dir=tmp_path / ".venv", package_spec=".")
+    execute_setup_plan(plan, runner=lambda _command: None, output_dir=tmp_path / "manual")
+
+    code_text = (tmp_path / "manual" / "code.py").read_text(encoding="utf-8")
+    assert "NUM_PIXELS = 16" in code_text
+    assert "NUM_PIXELS = 24" not in code_text
+
+
 def test_automatic_micropython_install_does_not_report_temp_dir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -354,7 +378,7 @@ def test_automatic_micropython_install_does_not_report_temp_dir(
     )
     monkeypatch.setattr(
         "copilot_command_ring.setup_wizard.prepare_firmware_files",
-        lambda _runtime, _pin, _output: prepared,
+        lambda _runtime, _pin, _output, *, pixel_count=DEFAULT_PIXEL_COUNT: prepared,
     )
     monkeypatch.setattr(
         "copilot_command_ring.setup_wizard.install_micropython_files",
@@ -413,6 +437,29 @@ def test_selections_from_json_rejects_boolean_pixel_count() -> None:
     )
     with pytest.raises(SetupWizardError, match="pixel_count"):
         selections_from_json(payload)
+
+
+@pytest.mark.parametrize("oversized", [513, 1024, 999999])
+def test_selections_from_json_rejects_oversized_pixel_count(oversized: int) -> None:
+    payload = (
+        '{"scope":"global","board_id":"raspberry-pi-pico",'
+        f'"runtime":"circuitpython","pixel_count":{oversized}'
+        "}"
+    )
+    with pytest.raises(SetupWizardError, match="pixel_count must be <="):
+        selections_from_json(payload)
+
+
+def test_selections_from_json_accepts_max_pixel_count_boundary() -> None:
+    from copilot_command_ring.constants import MAX_PIXEL_COUNT
+
+    payload = (
+        '{"scope":"global","board_id":"raspberry-pi-pico",'
+        f'"runtime":"circuitpython","pixel_count":{MAX_PIXEL_COUNT}'
+        "}"
+    )
+    selections = selections_from_json(payload)
+    assert selections.pixel_count == MAX_PIXEL_COUNT
 
 
 def test_prompt_for_selections_captures_ring_size(monkeypatch: pytest.MonkeyPatch) -> None:

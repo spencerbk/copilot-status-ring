@@ -327,9 +327,12 @@ class StatusRing:
 
     def _anim_spinner(self, color, elapsed, width, period):
         frac = (elapsed % period) / period
-        head = int(frac * self.num_pixels) % self.num_pixels
+        # Adafruit NeoPixel rings are wired so LED indices increase
+        # counter-clockwise when viewed from the LED face. Negate the
+        # head's motion so the lit segment appears to rotate clockwise.
+        head = (-int(frac * self.num_pixels)) % self.num_pixels
         for i in range(self.num_pixels):
-            # Light *width* pixels behind the head position
+            # Light *width* pixels trailing the head position
             dist = (head - i) % self.num_pixels
             if dist < width:
                 self.pixels[i] = color

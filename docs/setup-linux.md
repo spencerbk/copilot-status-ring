@@ -340,6 +340,6 @@ export COPILOT_RING_LOG_LEVEL=DEBUG
 
 The 24-LED Adafruit NeoPixel Ring (product 1586) is the project default, but the 16-LED ring (product 1463) and the 12-LED ring (product 1643) are first-class targets too.
 
-- **Easiest:** rerun `setup-status-ring` and pick 24, 16, or 12 at the *Which ring size do you have?* prompt. The wizard writes `pixel_count` into `.copilot-command-ring.local.json` for you.
+- **Easiest:** rerun `setup-status-ring` and pick 24, 16, or 12 at the *Which ring size do you have?* prompt. The wizard writes `pixel_count` into `.copilot-command-ring.local.json` *and* rewrites the static `NUM_PIXELS` / `#define PIXEL_COUNT` in the copied firmware so the boot wipe matches.
 - **Manually:** set `COPILOT_RING_PIXEL_COUNT` or edit `pixel_count` in your local JSON config. The host bridge sends the value to the firmware on every message and the firmware applies it at runtime — animations auto-scale.
-- **Clean startup wipe:** the firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT` (Arduino) is `24`, used only for the boot wipe before the first host message arrives. On a smaller ring the wipe still works, but for a perfectly clean boot animation, edit that constant in the firmware to match your ring before flashing.
+- **Clean startup wipe:** the firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT` (Arduino) is `24`. The wizard rewrites that constant for you when you flash through it; if you flash without the wizard, edit `NUM_PIXELS` / `#define PIXEL_COUNT` in the firmware to match your ring before uploading.

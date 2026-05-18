@@ -435,3 +435,49 @@ class TestSpinnerAutoScaleParity:
         assert not re.search(r"animSpinner\([^,]+,\s*\d+\s*,", block_src), (
             "Arduino ST_WORKING must not pass a hard-coded literal width to animSpinner"
         )
+
+
+class TestSpinnerRotationDirection:
+    """All firmware variants must rotate the spinner clockwise on Adafruit rings.
+
+    Adafruit NeoPixel rings are wired so LED indices increase counter-clockwise
+    when viewed from the LED face. The lit segment therefore moves CW only when
+    the head's motion over time is *negated* relative to ``int(frac * N)``.
+    These tests catch a future refactor that accidentally restores the
+    increasing-index head motion (which appears CCW).
+    """
+
+    def test_circuitpython_spinner_head_is_negated(self) -> None:
+        src = CP_CODE.read_text(encoding="utf-8")
+        match = re.search(
+            r"def _anim_spinner\(self.*?(?=\n    def )", src, re.DOTALL,
+        )
+        assert match, "_anim_spinner not found in CircuitPython firmware"
+        body = match.group(0)
+        assert "head = (-int(frac * self.num_pixels)) % self.num_pixels" in body, (
+            "CircuitPython spinner must negate head's motion for CW rotation"
+        )
+
+    def test_micropython_spinner_head_is_negated(self) -> None:
+        src = MP_CODE.read_text(encoding="utf-8")
+        match = re.search(
+            r"def _anim_spinner\(self.*?(?=\n    def )", src, re.DOTALL,
+        )
+        assert match, "_anim_spinner not found in MicroPython firmware"
+        body = match.group(0)
+        assert "head = (-int(frac * self.num_pixels)) % self.num_pixels" in body, (
+            "MicroPython spinner must negate head's motion for CW rotation"
+        )
+
+    def test_arduino_spinner_head_is_negated(self) -> None:
+        src = ARDUINO_CODE.read_text(encoding="utf-8")
+        match = re.search(
+            r"static void animSpinner\([^)]*\)\s*\{(.*?)\n\}",
+            src,
+            re.DOTALL,
+        )
+        assert match, "animSpinner not found in Arduino firmware"
+        body = match.group(1)
+        assert "(runtimePixelCount - forward) % runtimePixelCount" in body, (
+            "Arduino spinner must compute head as (N - forward) % N for CW rotation"
+        )
