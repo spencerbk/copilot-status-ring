@@ -26,6 +26,8 @@ from copilot_command_ring.setup_wizard import (
     SetupResult,
     SetupWizardError,
     WizardSelections,
+    _coerce_firmware_target,
+    _display_firmware_default,
     _format_summary,
     _shadow_warning_for,
     _write_local_config,
@@ -33,6 +35,7 @@ from copilot_command_ring.setup_wizard import (
     default_package_spec,
     default_state_dir,
     default_venv_dir,
+    detect_circuitpy_payload,
     execute_setup_plan,
     find_repo_root,
     is_local_path_spec,
@@ -1442,6 +1445,121 @@ def test_prompt_for_selections_no_ports_at_all_skips_silently(
         selections = prompt_for_selections()
     assert selections.serial_port is None
     assert selections.auto_detect_port is True
+
+
+# ── firmware_target normalization (drive-letter footgun on Windows) ─────────
+
+
+@pytest.mark.parametrize(
+    "raw,expected,nt_only",
+    [
+        ("F:", "F:/", True),
+        ("f:", "f:/", True),
+        ("F:/", "F:/", False),
+        ("F:\\", "F:\\", False),
+        ("F:lib", "F:/lib", True),
+        ("F:foo\\bar", "F:/foo\\bar", True),
+        ("F:.\\lib", "F:/.\\lib", True),
+        ("/Volumes/CIRCUITPY", "/Volumes/CIRCUITPY", False),
+        ("/media/spencer/CIRCUITPY", "/media/spencer/CIRCUITPY", False),
+    ],
+)
+def test_coerce_firmware_target_normalizes_bare_drive_letters(
+    raw: str, expected: str, nt_only: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if nt_only:
+        monkeypatch.setattr("copilot_command_ring.setup_wizard.os.name", "nt")
+    result = _coerce_firmware_target(raw)
+    assert result is not None
+    assert str(result) == str(Path(expected).expanduser())
+
+
+def test_coerce_firmware_target_skips_drive_normalization_on_posix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``F:foo`` is only a per-drive-CWD trap on Windows. On POSIX, it is
+    a valid relative path with a colon in the name and must pass through
+    unchanged.
+    """
+    monkeypatch.setattr("copilot_command_ring.setup_wizard.os.name", "posix")
+    result = _coerce_firmware_target("F:foo")
+    assert result is not None
+    assert str(result) == "F:foo"
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_coerce_firmware_target_returns_none_for_empty_input(value: object) -> None:
+    assert _coerce_firmware_target(value) is None
+
+
+def test_coerce_firmware_target_strips_surrounding_whitespace() -> None:
+    result = _coerce_firmware_target("  F:  ")
+    assert result is not None
+    assert str(result) == str(Path("F:/").expanduser())
+
+
+def test_selections_from_mapping_normalizes_bare_drive_letter() -> None:
+    """The extension's UI bug submits ``F:`` (trailing slash eaten by the
+    input widget); selections_from_mapping must rescue it.
+    """
+    from copilot_command_ring.setup_wizard import selections_from_mapping
+
+    payload = {
+        "scope": "global",
+        "board_id": "raspberry-pi-pico",
+        "runtime": "circuitpython",
+        "data_pin": "board.GP6",
+        "approve_firmware": True,
+        "firmware_target": "F:",
+        "pixel_count": 16,
+        "idle_mode": "breathing",
+    }
+    selections = selections_from_mapping(payload)
+    assert selections.firmware_target is not None
+    assert str(selections.firmware_target) == str(Path("F:/").expanduser())
+
+
+def test_display_firmware_default_windows_normalizes_all_backslashes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("copilot_command_ring.setup_wizard.os.name", "nt")
+    assert _display_firmware_default("F:\\") == "F:/"
+    assert _display_firmware_default("F:\\Sub\\") == "F:/Sub/"
+    assert _display_firmware_default("F:\\foo\\bar") == "F:/foo/bar"
+
+
+def test_display_firmware_default_posix_passes_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("copilot_command_ring.setup_wizard.os.name", "posix")
+    assert _display_firmware_default("/Volumes/CIRCUITPY") == "/Volumes/CIRCUITPY"
+    assert _display_firmware_default("F:\\") == "F:\\"
+
+
+def test_display_firmware_default_empty_passes_through() -> None:
+    assert _display_firmware_default("") == ""
+
+
+def test_detect_circuitpy_payload_uses_ui_safe_separator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("copilot_command_ring.setup_wizard.os.name", "nt")
+    monkeypatch.setattr(
+        "copilot_command_ring.setup_wizard.find_circuitpython_drive",
+        lambda: Path("F:\\"),
+    )
+    payload = detect_circuitpy_payload()
+    assert payload["detected"] is True
+    assert payload["path"] == "F:/"
+
+
+def test_detect_circuitpy_payload_missing_drive() -> None:
+    with patch(
+        "copilot_command_ring.setup_wizard.find_circuitpython_drive",
+        return_value=None,
+    ):
+        payload = detect_circuitpy_payload()
+    assert payload == {"detected": False, "path": None}
 
 
 # ── list_serial_ports() unit tests ────────────────────────────────────────

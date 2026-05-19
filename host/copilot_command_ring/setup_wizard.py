@@ -442,6 +442,32 @@ def _coerce_idle_mode(value: object) -> str:
     return normalized
 
 
+def _coerce_firmware_target(value: object) -> Path | None:
+    """Convert a user-supplied firmware target string to a ``Path``.
+
+    Defends against a Windows footgun: any drive-qualified path that
+    lacks a slash immediately after the colon refers to the per-drive
+    *current working directory*, not the drive root. ``Path("F:")`` and
+    ``Path("F:lib")`` both fall into this trap. We insert ``/`` after
+    the colon so the result is always rooted. ``None``/empty input
+    passes through.
+
+    Also handles the common UI bug where an input widget defaulting to
+    ``F:\\`` returns ``F:`` after the user presses Enter — the trailing
+    backslash gets eaten before the text is submitted.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if os.name == "nt":
+        match = re.match(r"^([A-Za-z]:)(?![\\/])(.*)$", text)
+        if match is not None:
+            text = f"{match.group(1)}/{match.group(2)}"
+    return Path(text).expanduser()
+
+
 def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
     """Validate and convert extension/JSON input into ``WizardSelections``."""
     scope = str(data.get("scope", SCOPE_GLOBAL)).strip().lower()
@@ -454,8 +480,7 @@ def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
 
     repo_value = data.get("repo_path")
     repo_path = Path(str(repo_value)).expanduser() if repo_value else None
-    target_value = data.get("firmware_target")
-    firmware_target = Path(str(target_value)).expanduser() if target_value else None
+    firmware_target = _coerce_firmware_target(data.get("firmware_target"))
     pin_value = data.get("data_pin")
     data_pin = str(pin_value).strip() if pin_value not in (None, "") else None
     port_value = data.get("serial_port")
@@ -857,9 +882,35 @@ def detect_port_payload() -> dict[str, object]:
 
 
 def detect_circuitpy_payload() -> dict[str, object]:
-    """Return JSON-ready CIRCUITPY drive detection status."""
+    """Return JSON-ready CIRCUITPY drive detection status.
+
+    ``path`` is emitted with a UI-friendly separator: on Windows the
+    drive root is rendered as e.g. ``F:/`` instead of ``F:\\`` so the
+    extension's input widget default does not lose the trailing
+    backslash when the user presses Enter. Python's ``Path`` treats
+    ``F:/`` and ``F:\\`` identically as the drive root.
+    """
     drive = find_circuitpython_drive()
-    return {"detected": drive is not None, "path": str(drive) if drive is not None else None}
+    return {
+        "detected": drive is not None,
+        "path": _display_firmware_default(str(drive)) if drive is not None else None,
+    }
+
+
+def _display_firmware_default(text: str) -> str:
+    """Render a firmware-target path for the UI default value.
+
+    On Windows, all backslashes become forward slashes so the UI
+    input widget cannot strip path separators on submit and so the
+    default never contains mixed separators. Python's ``Path`` accepts
+    forward slashes identically on Windows. Other platforms pass
+    through unchanged.
+    """
+    if not text:
+        return text
+    if os.name == "nt":
+        return text.replace("\\", "/")
+    return text
 
 
 def list_ports_payload() -> dict[str, object]:
@@ -1032,12 +1083,12 @@ def prompt_for_selections() -> WizardSelections:
             if approve and runtime == RUNTIME_CIRCUITPYTHON:
                 drive = find_circuitpython_drive()
                 default_target = str(drive) if drive is not None else ""
+                display_target = _display_firmware_default(default_target)
                 target_text = (
-                    input(f"CIRCUITPY path [{default_target}]: ").strip()
+                    input(f"CIRCUITPY path [{display_target}]: ").strip()
                     or default_target
                 )
-                if target_text:
-                    firmware_target = Path(target_text).expanduser()
+                firmware_target = _coerce_firmware_target(target_text)
         elif auto_detected is None:
             print(
                 "No serial port chosen; firmware install/copy will be skipped."

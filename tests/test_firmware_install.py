@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -124,15 +125,20 @@ def test_install_circuitpython_neopixel_runs_circup(tmp_path: Path) -> None:
     def fake_runner(command: Sequence[str]) -> None:
         commands.append(tuple(command))
 
-    install_circuitpython_neopixel(target, Path("/venv/bin/python"), runner=fake_runner)
+    python_executable = tmp_path / "venv" / ("Scripts" if os.name == "nt" else "bin") / (
+        "python.exe" if os.name == "nt" else "python"
+    )
+    install_circuitpython_neopixel(target, python_executable, runner=fake_runner)
+
+    expected_circup = python_executable.parent / (
+        "circup.exe" if os.name == "nt" else "circup"
+    )
 
     assert target.joinpath("lib").is_dir()
     assert commands == [
-        ("/venv/bin/python", "-m", "pip", "install", "--upgrade", "circup"),
+        (str(python_executable), "-m", "pip", "install", "--upgrade", "circup"),
         (
-            "/venv/bin/python",
-            "-m",
-            "circup",
+            str(expected_circup),
             "--path",
             str(target),
             "install",

@@ -251,6 +251,21 @@ def install_circuitpython_files(prepared: PreparedFirmware, target_drive: Path) 
     return tuple(written)
 
 
+def _circup_executable(python_executable: Path) -> Path:
+    """Return the ``circup`` entry-point script that ships next to *python_executable*.
+
+    ``circup`` is a package with no ``__main__.py``, so ``python -m circup``
+    fails with ``No module named circup.__main__``. Instead, invoke the
+    installed entry-point script — ``circup.exe`` on Windows, ``circup``
+    elsewhere — which both ``pip`` and ``circup`` itself install into the
+    same scripts directory as ``python``.
+    """
+    scripts_dir = python_executable.parent
+    if os.name == "nt":
+        return scripts_dir / "circup.exe"
+    return scripts_dir / "circup"
+
+
 def install_circuitpython_neopixel(
     target_drive: Path,
     python_executable: Path,
@@ -262,13 +277,12 @@ def install_circuitpython_neopixel(
         raise FirmwareInstallError(f"CircuitPython target is not a directory: {target_drive}")
 
     (target_drive / "lib").mkdir(exist_ok=True)
+    circup_exe = _circup_executable(python_executable)
     try:
         runner([str(python_executable), "-m", "pip", "install", "--upgrade", "circup"])
         runner(
             [
-                str(python_executable),
-                "-m",
-                "circup",
+                str(circup_exe),
                 "--path",
                 str(target_drive),
                 "install",
