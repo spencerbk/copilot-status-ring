@@ -44,11 +44,27 @@ class Config:
     )
 
 
-def _find_config_file(start: Path) -> Path | None:
+def find_config_path(start: Path) -> Path | None:
     """Search *start* and its parents for the config file.
 
-    Returns the first match or ``None``.
+    Returns the first match or ``None``. Public so diagnostic tools
+    (``copilot-command-ring doctor``) can report exactly which file
+    was loaded.
+
+    If the parent-chain walk finds nothing, falls back to
+    ``~/<CONFIG_FILE_NAME>`` — the well-known location the setup
+    wizard writes for the global scope. Without this fallback, the
+    wizard's "saved globally" promise only works when the current
+    working directory lives under the user's home tree.
     """
+    cwd_hit = _find_config_in_cwd_chain(start)
+    if cwd_hit is not None:
+        return cwd_hit
+    return _find_config_in_home()
+
+
+def _find_config_in_cwd_chain(start: Path) -> Path | None:
+    """Walk *start* and its parents, returning the first config file."""
     current = start.resolve()
     for directory in (current, *current.parents):
         candidate = directory / CONFIG_FILE_NAME
@@ -57,19 +73,51 @@ def _find_config_file(start: Path) -> Path | None:
     return None
 
 
-def _apply_file(cfg: Config, path: Path) -> None:
-    """Overlay values from a JSON config file onto *cfg*."""
+def _find_config_in_home() -> Path | None:
+    """Return ``~/<CONFIG_FILE_NAME>`` if it exists, else ``None``.
+
+    Tolerates platforms where ``Path.home()`` cannot resolve a home
+    directory (raises ``RuntimeError`` or ``OSError``).
+    """
+    try:
+        candidate = Path.home() / CONFIG_FILE_NAME
+    except (RuntimeError, OSError):
+        return None
+    return candidate if candidate.is_file() else None
+
+
+@dataclass
+class ConfigMetadata:
+    """Provenance for a loaded :class:`Config`.
+
+    Surfaces information that ``load_config`` previously discarded so
+    diagnostic tools can answer "which file was loaded?" and "did
+    anything go wrong while parsing it?" without reaching into
+    private helpers.
+    """
+
+    config_path: Path | None = None
+    parse_error: str | None = None
+
+
+def _apply_file(cfg: Config, path: Path) -> str | None:
+    """Overlay values from a JSON config file onto *cfg*.
+
+    Returns ``None`` on success, or a short error string when the file
+    could not be read/parsed. The error is also logged at DEBUG level
+    for parity with the historical behavior.
+    """
     log = get_logger()
     try:
         text = path.read_text(encoding="utf-8")
         data = json.loads(text)
     except (OSError, json.JSONDecodeError) as exc:
         log.debug("Ignoring config file %s: %s", path, exc)
-        return
+        return f"{type(exc).__name__}: {exc}"
 
     if not isinstance(data, dict):
         log.debug("Config file %s is not a JSON object; ignoring", path)
-        return
+        return "config file is not a JSON object"
 
     log.debug("Loaded config from %s", path)
 
@@ -202,13 +250,27 @@ def load_config(config_dir: Path | None = None) -> Config:
         Directory to start searching for the config file.
         Defaults to the current working directory.
     """
+    cfg, _meta = load_config_with_metadata(config_dir)
+    return cfg
+
+
+def load_config_with_metadata(
+    config_dir: Path | None = None,
+) -> tuple[Config, ConfigMetadata]:
+    """Like :func:`load_config` but also returns provenance metadata.
+
+    Diagnostic tools use the metadata to report which file was loaded
+    (or why none was) and to surface JSON parse errors that
+    :func:`load_config` silently swallows for normal hook execution.
+    """
     log = get_logger()
     cfg = Config()
+    meta = ConfigMetadata()
 
     start = Path(config_dir) if config_dir is not None else Path.cwd()
-    config_path = _find_config_file(start)
-    if config_path is not None:
-        _apply_file(cfg, config_path)
+    meta.config_path = find_config_path(start)
+    if meta.config_path is not None:
+        meta.parse_error = _apply_file(cfg, meta.config_path)
     else:
         log.debug("No config file (%s) found", CONFIG_FILE_NAME)
 
@@ -233,4 +295,4 @@ def load_config(config_dir: Path | None = None) -> Config:
         cfg.dry_run,
         cfg.lock_timeout,
     )
-    return cfg
+    return cfg, meta

@@ -8,14 +8,14 @@
 # On first run, also installs an iTerm2 Dynamic Profile so the
 # profile appears in the Profiles menu (detected automatically).
 #
-# To use in another repo: copy this file to <repo>/scripts/
-# and change only TAB_COLOR below.
+# To use in another repo: copy this file to <repo>/scripts/.
+# Optional local override: <repo>/.copilot-launcher.env with TAB_COLOR=#RRGGBB.
 # ============================================================
 
 # -----------------------------------------------------------
-# User-configurable: tab color (hex). Change per repo.
+# Deploy-provided default tab color (hex).
 # -----------------------------------------------------------
-TAB_COLOR="#787878"
+TAB_COLOR="#963885"
 
 # -----------------------------------------------------------
 # Derived values (from this script's filesystem location)
@@ -23,6 +23,18 @@ TAB_COLOR="#787878"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_NAME="$(basename "$REPO_DIR")"
+
+# -----------------------------------------------------------
+# Repo-local override (optional; exact TAB_COLOR=#RRGGBB lines only)
+# -----------------------------------------------------------
+LAUNCHER_ENV="$REPO_DIR/.copilot-launcher.env"
+if [ -f "$LAUNCHER_ENV" ]; then
+    while IFS= read -r line; do
+        if printf '%s\n' "$line" | grep -Eq '^TAB_COLOR=#[0-9A-Fa-f]{6}$'; then
+            TAB_COLOR="${line#TAB_COLOR=}"
+        fi
+    done < "$LAUNCHER_ENV"
+fi
 
 # -----------------------------------------------------------
 # Hex-to-iTerm2 color conversion (0.0–1.0 components)

@@ -666,7 +666,11 @@ static void animWipe(uint32_t color, unsigned long duration) {
 
 static void animSpinner(uint32_t color, int width, unsigned long period) {
   unsigned long elapsed = millis() - stateStartMs;
-  int head = (int)((elapsed % period) * runtimePixelCount / period);
+  // Adafruit NeoPixel rings are wired so LED indices increase
+  // counter-clockwise when viewed from the LED face. Negate the head's
+  // motion so the lit segment appears to rotate clockwise.
+  int forward = (int)((elapsed % period) * runtimePixelCount / period);
+  int head = (runtimePixelCount - forward) % runtimePixelCount;
   ring.clear();
   for (uint16_t i = 0; i < runtimePixelCount; i++) {
     int dist = (head - i + runtimePixelCount) % runtimePixelCount;
@@ -758,9 +762,14 @@ static void animate() {
     case ST_PROMPT_SUBMITTED:
       animWipe(COL_PROMPT, 800);
       break;
-    case ST_WORKING:
-      animSpinner(COL_WORKING, 6, 1000);
+    case ST_WORKING: {
+      // Spinner segment auto-scales with ring size: ~25% of the ring,
+      // floor of 2 LEDs. Matches CP/MP firmware: max(2, num_pixels // 4).
+      int spinnerWidth = (int)(runtimePixelCount / 4);
+      if (spinnerWidth < 2) spinnerWidth = 2;
+      animSpinner(COL_WORKING, spinnerWidth, 1000);
       break;
+    }
     case ST_TOOL_OK:
       animFlash(COL_TOOL_OK, 300);
       break;

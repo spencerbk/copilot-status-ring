@@ -108,3 +108,90 @@ class TestCLINoCommand:
         with pytest.raises(SystemExit) as exc_info:
             main([])
         assert exc_info.value.code == 0
+
+
+class TestCLIDoctor:
+    """The ``doctor`` subcommand delegates to doctor.run_doctor."""
+
+    @patch("copilot_command_ring.doctor.run_doctor", return_value=0)
+    def test_doctor_default_invokes_with_ping(self, mock_run: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["doctor"])
+        assert exc_info.value.code == 0
+        mock_run.assert_called_once_with(config_dir=None, ping=True)
+
+    @patch("copilot_command_ring.doctor.run_doctor", return_value=0)
+    def test_doctor_no_ping_flag(self, mock_run: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["doctor", "--no-ping"])
+        assert exc_info.value.code == 0
+        mock_run.assert_called_once_with(config_dir=None, ping=False)
+
+    @patch("copilot_command_ring.doctor.run_doctor", return_value=0)
+    def test_doctor_config_dir_passthrough(self, mock_run: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["doctor", "--config-dir", "/tmp/foo"])
+        assert exc_info.value.code == 0
+        # Use Path equality so the test passes on Windows and POSIX.
+        from pathlib import Path
+
+        call_kwargs = mock_run.call_args.kwargs
+        assert call_kwargs["config_dir"] == Path("/tmp/foo")
+        assert call_kwargs["ping"] is True
+
+    @patch("copilot_command_ring.doctor.run_doctor", return_value=1)
+    def test_doctor_propagates_failure_exit_code(self, mock_run: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["doctor"])
+        assert exc_info.value.code == 1
+        mock_run.assert_called_once()
+
+
+class TestCLIRefresh:
+    """The ``refresh`` subcommand delegates to setup_wizard.run_refresh.
+
+    ``refresh`` is the user-facing recovery for the install-staleness
+    trap: a frozen ``pip install`` snapshots the source, so hooks keep
+    running the previous version after ``git pull``. ``refresh`` reruns
+    only the pip-install step (no prompts, no firmware, no hooks).
+    """
+
+    @patch("copilot_command_ring.setup_wizard.run_refresh", return_value=True)
+    def test_refresh_default_uses_resolved_defaults(
+        self, mock_refresh: MagicMock,
+    ) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["refresh"])
+        assert exc_info.value.code == 0
+        mock_refresh.assert_called_once_with(venv_dir=None, package_spec=None)
+
+    @patch("copilot_command_ring.setup_wizard.run_refresh", return_value=True)
+    def test_refresh_package_spec_passthrough(
+        self, mock_refresh: MagicMock,
+    ) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["refresh", "--package-spec", "/tmp/clone"])
+        assert exc_info.value.code == 0
+        mock_refresh.assert_called_once_with(
+            venv_dir=None, package_spec="/tmp/clone",
+        )
+
+    @patch("copilot_command_ring.setup_wizard.run_refresh", return_value=True)
+    def test_refresh_venv_dir_passthrough(self, mock_refresh: MagicMock) -> None:
+        from pathlib import Path
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(["refresh", "--venv-dir", "/tmp/myvenv"])
+        assert exc_info.value.code == 0
+        call_kwargs = mock_refresh.call_args.kwargs
+        assert call_kwargs["venv_dir"] == Path("/tmp/myvenv")
+        assert call_kwargs["package_spec"] is None
+
+    @patch("copilot_command_ring.setup_wizard.run_refresh", return_value=False)
+    def test_refresh_propagates_failure_exit_code(
+        self, mock_refresh: MagicMock,
+    ) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["refresh"])
+        assert exc_info.value.code == 1
+        mock_refresh.assert_called_once()

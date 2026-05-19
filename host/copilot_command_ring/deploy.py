@@ -295,10 +295,6 @@ def setup_global_hooks(
                 path.chmod(path.stat().st_mode | 0o111)
 
     print(f"Installed global hooks to {hooks_dir}", file=sys.stderr)
-    print(
-        "The ring will now activate in all repositories automatically.",
-        file=sys.stderr,
-    )
     return True
 
 

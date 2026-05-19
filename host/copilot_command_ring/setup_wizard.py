@@ -25,7 +25,14 @@ from .boards import (
     options_payload,
 )
 from .config import Config
-from .detect_ports import detect_serial_port
+from .constants import (
+    CONFIG_FILE_NAME,
+    DEFAULT_IDLE_MODE,
+    DEFAULT_PIXEL_COUNT,
+    MAX_PIXEL_COUNT,
+    VALID_IDLE_MODES,
+)
+from .detect_ports import detect_serial_port, list_serial_ports
 from .firmware_install import (
     FirmwareInstallError,
     PreparedFirmware,
@@ -39,6 +46,21 @@ from .firmware_install import (
 PACKAGE_SPEC_DEFAULT = "git+https://github.com/spencerbk/copilot-status-ring.git"
 SCOPE_GLOBAL = "global"
 SCOPE_REPO = "repo"
+
+# Heuristic for "the package spec points at a local source tree we can
+# install with ``pip install -e ...``". Used so contributors with a
+# clone get a live install that auto-updates after ``git pull``; users
+# installing from the GitHub URL stay frozen.
+_REMOTE_OR_VCS_PREFIXES = (
+    "git+",
+    "hg+",
+    "svn+",
+    "bzr+",
+    "http://",
+    "https://",
+    "file://",
+)
+_VERSION_OPERATORS = ("==", "!=", ">=", "<=", "~=", "===")
 
 _PYPROJECT_NAME_PATTERN = re.compile(
     r"^\s*name\s*=\s*['\"]copilot-command-ring['\"]\s*$",
@@ -65,6 +87,9 @@ class WizardSelections:
     approve_firmware: bool = False
     firmware_target: Path | None = None
     force_hooks: bool = True
+    pixel_count: int = DEFAULT_PIXEL_COUNT
+    serial_port: str | None = None
+    idle_mode: str = DEFAULT_IDLE_MODE
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-serializable representation."""
@@ -80,6 +105,9 @@ class WizardSelections:
                 str(self.firmware_target) if self.firmware_target is not None else None
             ),
             "force_hooks": self.force_hooks,
+            "pixel_count": self.pixel_count,
+            "serial_port": self.serial_port,
+            "idle_mode": self.idle_mode,
         }
 
 
@@ -158,6 +186,7 @@ class SetupResult:
     firmware_written: tuple[Path, ...] = ()
     firmware_prepared_dir: Path | None = None
     firmware_warnings: tuple[str, ...] = ()
+    config_written: Path | None = None
 
 
 def default_state_dir(
@@ -230,6 +259,118 @@ def default_package_spec(*, repo_root: Path | None = None) -> str:
     return PACKAGE_SPEC_DEFAULT
 
 
+def is_local_path_spec(spec: str) -> bool:
+    """Return ``True`` if *spec* points at a local source tree.
+
+    The wizard adds ``-e`` (editable) to ``pip install`` only when the
+    spec is a local path that exists on disk, so contributors working
+    from a clone get a live install that auto-updates after
+    ``git pull`` while end users installing from the GitHub URL keep
+    getting a frozen install (which is the only safe option for a
+    remote VCS spec without ``--src``).
+
+    Returns ``False`` for empty strings, URLs / VCS specs
+    (``git+...``, ``http(s)://...``, etc.), and PEP 508 version
+    specifiers (``copilot-command-ring==0.1.0``).
+    """
+    if not spec:
+        return False
+    if spec.startswith(_REMOTE_OR_VCS_PREFIXES):
+        return False
+    if any(op in spec for op in _VERSION_OPERATORS):
+        return False
+    try:
+        candidate = Path(spec).expanduser()
+    except (OSError, ValueError):
+        return False
+    try:
+        return candidate.is_dir()
+    except OSError:
+        return False
+
+
+def _build_pip_install_args(
+    venv_python: Path, package_spec: str,
+) -> tuple[str, ...]:
+    """Build the ``pip install`` argv for *package_spec*.
+
+    Injects ``-e`` when the spec is a local source tree so contributors
+    get a live install that auto-updates after ``git pull``. Falls back
+    to a frozen install for git URLs, version specifiers, or any spec
+    that does not resolve to a directory on disk.
+    """
+    base: tuple[str, ...] = (
+        str(venv_python),
+        "-m",
+        "pip",
+        "install",
+        "--quiet",
+        "--upgrade",
+    )
+    if is_local_path_spec(package_spec):
+        return (*base, "-e", package_spec)
+    return (*base, package_spec)
+
+
+def run_refresh(
+    *,
+    venv_dir: Path | None = None,
+    package_spec: str | None = None,
+    runner: Callable[[Sequence[str]], None] | None = None,
+) -> bool:
+    """Re-install / upgrade the host package into the wizard's venv.
+
+    Designed as the user-facing recovery action for the "I pulled new
+    code (or a new release shipped) but the hooks are still running
+    the previous version" case: a frozen ``pip install`` freezes the
+    source tree, so source-tree edits only reach the hooks once pip
+    is re-run. This function performs **only** the pip install step
+    that the full wizard performs — no prompts, no firmware copy, no
+    hook reinstall, no simulation. It is safe to call after
+    ``git pull`` or whenever you suspect the installed package has
+    drifted from the source.
+
+    The venv path and package spec resolve the same way they do in
+    :func:`build_setup_plan`: defaults come from :func:`default_venv_dir`
+    and :func:`default_package_spec`, both of which honor a detected
+    repository clone. When the spec is a local source tree the install
+    is editable (``pip install -e``); for the GitHub URL fallback it
+    is frozen.
+
+    Returns ``True`` on success, ``False`` when pip exits non-zero or
+    the venv's python cannot be found.
+    """
+    chosen_venv = (venv_dir or default_venv_dir()).expanduser().resolve()
+    venv_python = venv_python_path(chosen_venv)
+    if not venv_python.is_file():
+        print(
+            f"copilot-command-ring refresh: venv python not found at "
+            f"{venv_python}; run `copilot-command-ring setup-status-ring` first.",
+            file=sys.stderr,
+        )
+        return False
+
+    resolved_spec = package_spec if package_spec else default_package_spec()
+    args = _build_pip_install_args(venv_python, resolved_spec)
+    install_mode = "editable" if "-e" in args else "frozen"
+
+    _phase(
+        f"Refreshing copilot-command-ring ({install_mode}, spec={resolved_spec})"
+    )
+    run = runner if runner is not None else _run_checked
+    try:
+        run(args)
+    except subprocess.CalledProcessError as exc:
+        print(
+            f"copilot-command-ring refresh: pip install failed "
+            f"(exit={exc.returncode}).",
+            file=sys.stderr,
+        )
+        return False
+    print("Refresh complete.", file=sys.stderr)
+    return True
+
+
 def venv_python_path(venv_dir: Path, *, os_name: str | None = None) -> Path:
     """Return the Python executable path for *venv_dir*."""
     platform_name = os_name if os_name is not None else os.name
@@ -246,6 +387,87 @@ def _bool_value(value: object, *, default: bool = False) -> bool:
     return default
 
 
+def _coerce_pixel_count(value: object) -> int:
+    """Validate and coerce a wizard-input pixel count.
+
+    Accepts ``None`` / missing (default to ``DEFAULT_PIXEL_COUNT``), positive
+    integers up to ``MAX_PIXEL_COUNT``, and integer-valued strings within the
+    same range. Rejects booleans, non-positive values, oversized values, and
+    anything else.
+    """
+    if value is None or value == "":
+        return DEFAULT_PIXEL_COUNT
+    if isinstance(value, bool):
+        raise SetupWizardError(
+            f"pixel_count must be a positive integer, got {value!r}"
+        )
+    try:
+        coerced = int(value)
+    except (TypeError, ValueError) as exc:
+        raise SetupWizardError(
+            f"pixel_count must be a positive integer, got {value!r}"
+        ) from exc
+    if coerced <= 0:
+        raise SetupWizardError(
+            f"pixel_count must be a positive integer, got {value!r}"
+        )
+    if coerced > MAX_PIXEL_COUNT:
+        raise SetupWizardError(
+            f"pixel_count must be <= {MAX_PIXEL_COUNT}, got {coerced}"
+        )
+    return coerced
+
+
+def _coerce_idle_mode(value: object) -> str:
+    """Validate and coerce a wizard-input idle_mode.
+
+    Missing / ``None`` / empty string fall back to ``DEFAULT_IDLE_MODE``
+    (``"breathing"``). Any non-empty string outside ``VALID_IDLE_MODES``
+    raises ``SetupWizardError`` so extension/JSON bugs surface loudly
+    instead of silently defaulting back to breathing.
+    """
+    if value is None or value == "":
+        return DEFAULT_IDLE_MODE
+    if not isinstance(value, str):
+        raise SetupWizardError(
+            f"idle_mode must be one of {sorted(VALID_IDLE_MODES)}, got {value!r}"
+        )
+    normalized = value.strip().lower()
+    if not normalized:
+        return DEFAULT_IDLE_MODE
+    if normalized not in VALID_IDLE_MODES:
+        raise SetupWizardError(
+            f"idle_mode must be one of {sorted(VALID_IDLE_MODES)}, got {value!r}"
+        )
+    return normalized
+
+
+def _coerce_firmware_target(value: object) -> Path | None:
+    """Convert a user-supplied firmware target string to a ``Path``.
+
+    Defends against a Windows footgun: any drive-qualified path that
+    lacks a slash immediately after the colon refers to the per-drive
+    *current working directory*, not the drive root. ``Path("F:")`` and
+    ``Path("F:lib")`` both fall into this trap. We insert ``/`` after
+    the colon so the result is always rooted. ``None``/empty input
+    passes through.
+
+    Also handles the common UI bug where an input widget defaulting to
+    ``F:\\`` returns ``F:`` after the user presses Enter — the trailing
+    backslash gets eaten before the text is submitted.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if os.name == "nt":
+        match = re.match(r"^([A-Za-z]:)(?![\\/])(.*)$", text)
+        if match is not None:
+            text = f"{match.group(1)}/{match.group(2)}"
+    return Path(text).expanduser()
+
+
 def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
     """Validate and convert extension/JSON input into ``WizardSelections``."""
     scope = str(data.get("scope", SCOPE_GLOBAL)).strip().lower()
@@ -258,10 +480,17 @@ def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
 
     repo_value = data.get("repo_path")
     repo_path = Path(str(repo_value)).expanduser() if repo_value else None
-    target_value = data.get("firmware_target")
-    firmware_target = Path(str(target_value)).expanduser() if target_value else None
+    firmware_target = _coerce_firmware_target(data.get("firmware_target"))
     pin_value = data.get("data_pin")
     data_pin = str(pin_value).strip() if pin_value not in (None, "") else None
+    port_value = data.get("serial_port")
+    if port_value is None:
+        serial_port: str | None = None
+    else:
+        port_text = str(port_value).strip()
+        serial_port = port_text if port_text else None
+    pixel_count = _coerce_pixel_count(data.get("pixel_count"))
+    idle_mode = _coerce_idle_mode(data.get("idle_mode"))
 
     return WizardSelections(
         scope=scope,
@@ -273,6 +502,9 @@ def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
         approve_firmware=_bool_value(data.get("approve_firmware"), default=False),
         firmware_target=firmware_target,
         force_hooks=_bool_value(data.get("force_hooks"), default=True),
+        pixel_count=pixel_count,
+        serial_port=serial_port,
+        idle_mode=idle_mode,
     )
 
 
@@ -295,6 +527,10 @@ def _validate_selections(selections: WizardSelections) -> None:
             raise SetupWizardError("repo_path is required for per-repo setup")
         if not selections.repo_path.is_dir():
             raise SetupWizardError(f"repo_path is not a directory: {selections.repo_path}")
+    if selections.idle_mode not in VALID_IDLE_MODES:
+        raise SetupWizardError(
+            f"idle_mode must be one of {sorted(VALID_IDLE_MODES)}, got {selections.idle_mode!r}"
+        )
 
     board = get_board(selections.board_id)
     runtime = get_runtime(board.id, selections.runtime)
@@ -377,14 +613,7 @@ def build_setup_plan(
         ),
         install_command=CommandStep(
             "Install or upgrade copilot-command-ring",
-            (
-                str(venv_python),
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                resolved_package_spec,
-            ),
+            _build_pip_install_args(venv_python, resolved_package_spec),
         ),
         hook_command=hook_command,
         validation_command=CommandStep(
@@ -396,14 +625,140 @@ def build_setup_plan(
                 "--dry-run",
                 "--delay",
                 "0",
+                "--quiet",
             ),
         ),
         firmware=build_firmware_action_plan(selections),
     )
 
 
+def _resolve_local_config_path(selections: WizardSelections) -> Path:
+    """Return the .copilot-command-ring.local.json path for the chosen scope.
+
+    Global scope writes to ``~/<CONFIG_FILE_NAME>`` so the host bridge picks
+    it up on any subsequent invocation under the user's home tree. Repo
+    scope writes to ``<repo>/<CONFIG_FILE_NAME>`` so it travels with the
+    repository.
+    """
+    if selections.scope == SCOPE_REPO:
+        assert selections.repo_path is not None
+        return selections.repo_path.expanduser().resolve() / CONFIG_FILE_NAME
+    return _user_home() / CONFIG_FILE_NAME
+
+
+def _user_home() -> Path:
+    """Indirection over ``Path.home()`` so tests can isolate the global path."""
+    return Path.home()
+
+
+def _shadow_warning_for(
+    selections: WizardSelections, config_written: Path | None
+) -> list[str] | None:
+    """Return stderr lines warning about a per-repo config that will shadow
+    the wizard's save, or ``None`` if nothing is shadowed.
+
+    ``find_config_path`` resolves repo-local files before the home fallback,
+    so a stale ``./.copilot-command-ring.local.json`` will quietly override
+    the global save the wizard just wrote. This catches the common case
+    where the user followed an older README example, then runs the wizard
+    with global scope, then wonders why their settings have no effect.
+
+    Only walks from CWD up to (but not past) the user's home directory.
+    If CWD is outside the home tree, returns ``None`` — the
+    home-fallback never kicks in for that CWD anyway, so a warning would
+    not be actionable.
+    """
+    if selections.scope != SCOPE_GLOBAL:
+        return None
+    try:
+        cwd = Path.cwd().resolve()
+    except (OSError, RuntimeError):
+        return None
+    try:
+        home = _user_home().resolve()
+    except (OSError, RuntimeError):
+        return None
+    try:
+        cwd.relative_to(home)
+    except ValueError:
+        return None
+    lines: list[str] = []
+    for directory in (cwd, *cwd.parents):
+        if directory == home:
+            return None
+        candidate = directory / CONFIG_FILE_NAME
+        if candidate.is_file():
+            lines.append(
+                "Warning: a repo-scoped config will shadow your global save:"
+            )
+            lines.append(f"  {candidate}")
+            if config_written is not None:
+                lines.append(
+                    f"This file takes precedence over {config_written}."
+                )
+            lines.append(
+                "Delete or edit it so the global settings take effect."
+            )
+            return lines
+    return None
+
+
+def _write_local_config(selections: WizardSelections) -> Path | None:
+    """Persist the wizard's hardware choices to the local JSON config file.
+
+    Merge semantics: if the target file already exists and parses as a JSON
+    object, its existing fields are preserved and only ``pixel_count``,
+    ``serial_port`` (when chosen), and ``idle_mode`` (when non-default or
+    already set in the file) are overwritten. Returns the path that was
+    written, or ``None`` when every wizard choice matches its default and
+    no file already exists.
+    """
+    target = _resolve_local_config_path(selections)
+    existing: dict[str, object] = {}
+    file_existed = target.is_file()
+    if file_existed:
+        try:
+            data = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = None
+        if isinstance(data, dict):
+            existing = data
+
+    has_chosen_port = selections.serial_port is not None
+    idle_is_default = selections.idle_mode == DEFAULT_IDLE_MODE
+    idle_already_in_file = "idle_mode" in existing
+    if (
+        selections.pixel_count == DEFAULT_PIXEL_COUNT
+        and idle_is_default
+        and not idle_already_in_file
+        and not file_existed
+        and not has_chosen_port
+    ):
+        return None
+
+    existing["pixel_count"] = selections.pixel_count
+    if has_chosen_port:
+        existing["serial_port"] = selections.serial_port
+    if not idle_is_default or idle_already_in_file:
+        existing["idle_mode"] = selections.idle_mode
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
+    return target
+
+
 def _run_checked(command: Sequence[str]) -> None:
     subprocess.run(list(command), check=True)
+
+
+def _phase(label: str) -> None:
+    """Print a setup phase header to stderr.
+
+    Phase headers give the user a visible progress trail when the underlying
+    commands (``pip install --quiet``, ``simulate --quiet``, …) are silent on
+    success. Keep them short, terminal-friendly, and on stderr so they do not
+    pollute JSON-on-stdout commands like ``--plan-only``.
+    """
+    print(f"==> {label}", file=sys.stderr)
 
 
 def _firmware_output_dir(plan: SetupPlan, output_dir: Path | None) -> Path | None:
@@ -438,17 +793,29 @@ def execute_setup_plan(
 ) -> SetupResult:
     """Execute a setup plan and return a summary."""
     if plan.create_venv:
+        _phase(f"Creating virtual environment at {plan.venv_dir}")
         runner(plan.create_venv_command.command)
     if not skip_install:
+        _phase("Installing copilot-command-ring (this may take a minute)")
         runner(plan.install_command.command)
+    _phase(plan.hook_command.label)
     runner(plan.hook_command.command)
 
-    detected_port = detect_serial_port(Config()) if plan.selections.auto_detect_port else None
+    detected_port: str | None = None
+    if plan.selections.serial_port:
+        # When the wizard collected an explicit port, prefer it for the
+        # summary instead of re-detecting — re-detection might pick a
+        # different port (e.g. the one the user just rejected).
+        detected_port = plan.selections.serial_port
+    elif plan.selections.auto_detect_port:
+        _phase("Detecting host serial port")
+        detected_port = detect_serial_port(Config())
     firmware_written: tuple[Path, ...] = ()
     prepared_dir: Path | None = None
     firmware_warnings: tuple[str, ...] = ()
 
     if plan.selections.approve_firmware:
+        _phase(f"Preparing {plan.selections.runtime} firmware")
         persistent_output = _firmware_output_dir(plan, output_dir)
         if persistent_output is None:
             with tempfile.TemporaryDirectory(prefix="copilot-ring-firmware-") as temp_dir:
@@ -456,6 +823,7 @@ def execute_setup_plan(
                     plan.selections.runtime,
                     plan.selections.data_pin,
                     Path(temp_dir),
+                    pixel_count=plan.selections.pixel_count,
                 )
                 if plan.selections.runtime == RUNTIME_CIRCUITPYTHON:
                     if plan.selections.firmware_target is not None:
@@ -476,6 +844,7 @@ def execute_setup_plan(
                 plan.selections.runtime,
                 plan.selections.data_pin,
                 persistent_output,
+                pixel_count=plan.selections.pixel_count,
             )
             prepared_dir = prepared.directory
             if plan.selections.runtime == RUNTIME_CIRCUITPYTHON:
@@ -493,13 +862,16 @@ def execute_setup_plan(
                     runner=runner,
                 )
 
+    _phase("Validating event pipeline")
     runner(plan.validation_command.command)
+    config_written = _write_local_config(plan.selections)
     return SetupResult(
         plan=plan,
         detected_port=detected_port,
         firmware_written=firmware_written,
         firmware_prepared_dir=prepared_dir,
         firmware_warnings=firmware_warnings,
+        config_written=config_written,
     )
 
 
@@ -510,9 +882,46 @@ def detect_port_payload() -> dict[str, object]:
 
 
 def detect_circuitpy_payload() -> dict[str, object]:
-    """Return JSON-ready CIRCUITPY drive detection status."""
+    """Return JSON-ready CIRCUITPY drive detection status.
+
+    ``path`` is emitted with a UI-friendly separator: on Windows the
+    drive root is rendered as e.g. ``F:/`` instead of ``F:\\`` so the
+    extension's input widget default does not lose the trailing
+    backslash when the user presses Enter. Python's ``Path`` treats
+    ``F:/`` and ``F:\\`` identically as the drive root.
+    """
     drive = find_circuitpython_drive()
-    return {"detected": drive is not None, "path": str(drive) if drive is not None else None}
+    return {
+        "detected": drive is not None,
+        "path": _display_firmware_default(str(drive)) if drive is not None else None,
+    }
+
+
+def _display_firmware_default(text: str) -> str:
+    """Render a firmware-target path for the UI default value.
+
+    On Windows, all backslashes become forward slashes so the UI
+    input widget cannot strip path separators on submit and so the
+    default never contains mixed separators. Python's ``Path`` accepts
+    forward slashes identically on Windows. Other platforms pass
+    through unchanged.
+    """
+    if not text:
+        return text
+    if os.name == "nt":
+        return text.replace("\\", "/")
+    return text
+
+
+def list_ports_payload() -> dict[str, object]:
+    """Return JSON-ready list of every enumerable serial port.
+
+    Each entry has a ``device`` (e.g. ``COM12``) and a ``description``.
+    The extension calls this when the user wants to manually pick a port
+    after rejecting auto-detection or when no matching device was found.
+    Returns an empty list (not an error) when pyserial is unavailable.
+    """
+    return {"ports": list_serial_ports()}
 
 
 def _choose(prompt: str, options: Sequence[tuple[str, str]], *, default: str) -> str:
@@ -541,6 +950,71 @@ def _confirm(prompt: str, *, default: bool) -> bool:
     if not answer:
         return default
     return answer in {"y", "yes"}
+
+
+def _pick_serial_port_interactively(
+    *,
+    auto_detected: str | None,
+) -> str | None:
+    """Prompt the user to choose a serial port for the setup config.
+
+    The flow always offers a "Skip" outcome so the user can leave any
+    pre-existing configured port untouched. Returns the chosen port
+    device string (e.g. ``"COM12"``) or ``None`` if the user skipped or
+    no ports were enumerable. Empty enumeration (``pyserial`` missing,
+    no devices) collapses to skip without raising, mirroring the
+    extension's empty-list handling.
+    """
+    ports = list_serial_ports()
+    if auto_detected is not None:
+        options: list[tuple[str, str]] = [
+            ("__use__", f"Use {auto_detected} (auto-detected)"),
+        ]
+        if ports:
+            options.append(("__pick__", "Pick a different port"))
+        options.append(("__skip__", "Skip — keep any existing saved port"))
+        choice = _choose(
+            "How should the ring's serial port be configured?",
+            tuple(options),
+            default="__use__",
+        )
+        if choice == "__use__":
+            return auto_detected
+        if choice == "__skip__":
+            return None
+    else:
+        if not ports:
+            print(
+                "No matching serial device detected and no ports could be enumerated."
+            )
+            return None
+        options = [
+            ("__pick__", "Pick a port from the list"),
+            ("__skip__", "Skip — keep any existing saved port"),
+        ]
+        choice = _choose(
+            "How should the ring's serial port be configured?",
+            tuple(options),
+            default="__skip__",
+        )
+        if choice == "__skip__":
+            return None
+
+    if not ports:
+        print("No serial ports could be enumerated. Skipping.")
+        return None
+    port_options = tuple(
+        (
+            entry["device"],
+            f"{entry['device']} — {entry['description']}".rstrip(" —"),
+        )
+        for entry in ports
+    )
+    return _choose(
+        "Which serial port should the ring use?",
+        port_options,
+        default=port_options[0][0],
+    )
 
 
 def prompt_for_selections() -> WizardSelections:
@@ -574,24 +1048,51 @@ def prompt_for_selections() -> WizardSelections:
         pin_prompt += f" [{runtime_meta.default_pin}]"
     data_pin = input(f"{pin_prompt}: ").strip() or runtime_meta.default_pin
 
+    pixel_choice = _choose(
+        "Which ring size do you have?",
+        (
+            ("24", "24 LEDs — Adafruit NeoPixel Ring 24 (product 1586)"),
+            ("16", "16 LEDs — Adafruit NeoPixel Ring 16 (product 1463)"),
+            ("12", "12 LEDs — Adafruit NeoPixel Ring 12 (product 1643)"),
+        ),
+        default=str(DEFAULT_PIXEL_COUNT),
+    )
+    pixel_count = int(pixel_choice)
+
+    idle_mode = _choose(
+        "How should the ring look when Copilot is idle?",
+        (
+            ("breathing", "Breathing — stay dim when idle (recommended)"),
+            ("off", "Off — go dark when all sessions end"),
+        ),
+        default=DEFAULT_IDLE_MODE,
+    )
+
     auto_detect = _confirm("Attempt host USB serial auto-detection?", default=True)
+    serial_port: str | None = None
     firmware_target = None
     approve = False
     if auto_detect:
-        port = detect_serial_port(Config())
-        if port:
-            approve = _confirm(f"Detected {port}. Approve firmware install/copy?", default=False)
+        auto_detected = detect_serial_port(Config())
+        serial_port = _pick_serial_port_interactively(auto_detected=auto_detected)
+        if serial_port is not None:
+            approve = _confirm(
+                f"Approve firmware install/copy for {serial_port}?",
+                default=False,
+            )
             if approve and runtime == RUNTIME_CIRCUITPYTHON:
                 drive = find_circuitpython_drive()
                 default_target = str(drive) if drive is not None else ""
+                display_target = _display_firmware_default(default_target)
                 target_text = (
-                    input(f"CIRCUITPY path [{default_target}]: ").strip()
+                    input(f"CIRCUITPY path [{display_target}]: ").strip()
                     or default_target
                 )
-                if target_text:
-                    firmware_target = Path(target_text).expanduser()
-        else:
-            print("No matching serial device detected; firmware install will stay manual.")
+                firmware_target = _coerce_firmware_target(target_text)
+        elif auto_detected is None:
+            print(
+                "No serial port chosen; firmware install/copy will be skipped."
+            )
 
     return WizardSelections(
         scope=scope_label,
@@ -603,6 +1104,9 @@ def prompt_for_selections() -> WizardSelections:
         approve_firmware=approve,
         firmware_target=firmware_target,
         force_hooks=True,
+        pixel_count=pixel_count,
+        serial_port=serial_port,
+        idle_mode=idle_mode,
     )
 
 
@@ -628,6 +1132,11 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--detect-circuitpy-json",
         action="store_true",
         help="Print CIRCUITPY drive auto-detection result as JSON and exit",
+    )
+    parser.add_argument(
+        "--list-ports-json",
+        action="store_true",
+        help="Print every enumerable serial port as JSON and exit",
     )
     parser.add_argument(
         "--from-json",
@@ -668,6 +1177,58 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _format_summary(
+    result: SetupResult,
+    *,
+    pixel_count: int,
+    scope: str,
+    approve_firmware: bool,
+    chosen_port: str | None = None,
+    idle_mode: str = DEFAULT_IDLE_MODE,
+) -> list[str]:
+    """Render the post-setup summary as a list of stderr-ready lines.
+
+    Extracted from ``run_setup_status_ring_from_args`` so the structured
+    block stays unit-testable and easy to tweak without touching argparse
+    plumbing. Returns blank-line-separated lines in display order.
+
+    ``chosen_port`` is the value of ``WizardSelections.serial_port`` (the
+    port the user explicitly picked or kept). When it matches
+    ``result.detected_port`` the row is labeled "chosen" rather than
+    "auto-detected", so the tail honestly reflects the user's decision.
+    """
+    rows: list[tuple[str, str]] = []
+    rows.append(("Venv", str(result.plan.venv_dir)))
+    rows.append(("Scope", scope))
+    rows.append(("Ring size", f"{pixel_count} LEDs"))
+    rows.append(("Idle mode", idle_mode))
+    if result.detected_port:
+        if chosen_port is not None and chosen_port == result.detected_port:
+            suffix = "chosen"
+        else:
+            suffix = "auto-detected"
+        rows.append(("Serial port", f"{result.detected_port} ({suffix})"))
+    if result.firmware_written:
+        files_label = ", ".join(path.name for path in result.firmware_written)
+        rows.append(("Firmware copied", files_label))
+    elif result.firmware_prepared_dir is not None:
+        rows.append(("Firmware prepared", str(result.firmware_prepared_dir)))
+    elif approve_firmware:
+        rows.append(("Firmware", "prepared (follow manual runtime steps)"))
+    if result.config_written is not None:
+        rows.append(("Config", str(result.config_written)))
+    else:
+        rows.append(("Config", "not written; defaults match wizard choices"))
+
+    label_width = max(len(label) for label, _ in rows)
+    lines = ["Setup complete."]
+    for label, value in rows:
+        lines.append(f"  {label.ljust(label_width)}  {value}")
+    for warning in result.firmware_warnings:
+        lines.append(f"  Warning: {warning}")
+    return lines
+
+
 def run_setup_status_ring_from_args(args: argparse.Namespace) -> bool:
     """Run the setup-status-ring command from parsed argparse arguments."""
     try:
@@ -679,6 +1240,9 @@ def run_setup_status_ring_from_args(args: argparse.Namespace) -> bool:
             return True
         if args.detect_circuitpy_json:
             print(json.dumps(detect_circuitpy_payload(), indent=2))
+            return True
+        if args.list_ports_json:
+            print(json.dumps(list_ports_payload(), indent=2))
             return True
 
         selections = (
@@ -701,21 +1265,22 @@ def run_setup_status_ring_from_args(args: argparse.Namespace) -> bool:
             return False
 
         result = execute_setup_plan(plan, skip_install=args.skip_install)
-        print(f"Setup complete. Venv: {result.plan.venv_dir}", file=sys.stderr)
-        if result.detected_port:
-            print(f"Detected serial port: {result.detected_port}", file=sys.stderr)
-        if result.firmware_written:
-            for path in result.firmware_written:
-                print(f"Wrote firmware file: {path}", file=sys.stderr)
-            for warning in result.firmware_warnings:
-                print(f"Firmware warning: {warning}", file=sys.stderr)
-        elif result.firmware_prepared_dir is not None:
-            print(f"Prepared firmware files: {result.firmware_prepared_dir}", file=sys.stderr)
-        elif selections.approve_firmware:
-            print(
-                "Firmware was prepared; follow the manual runtime steps if needed.",
-                file=sys.stderr,
-            )
+        summary = _format_summary(
+            result,
+            pixel_count=selections.pixel_count,
+            scope=selections.scope,
+            approve_firmware=selections.approve_firmware,
+            chosen_port=selections.serial_port,
+            idle_mode=selections.idle_mode,
+        )
+        print("", file=sys.stderr)
+        for line in summary:
+            print(line, file=sys.stderr)
+        shadow_warning = _shadow_warning_for(selections, result.config_written)
+        if shadow_warning is not None:
+            print("", file=sys.stderr)
+            for line in shadow_warning:
+                print(line, file=sys.stderr)
         return True
     except (KeyError, OSError, subprocess.CalledProcessError, FirmwareInstallError) as exc:
         print(f"setup-status-ring: {exc}", file=sys.stderr)

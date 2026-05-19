@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable
 
 from .boards import RUNTIME_ARDUINO, RUNTIME_CIRCUITPYTHON, RUNTIME_MICROPYTHON
+from .constants import DEFAULT_PIXEL_COUNT
 
 CommandRunner = Callable[[Sequence[str]], None]
 
@@ -121,8 +122,9 @@ def prepare_firmware_files(
     output_dir: Path,
     *,
     source_root: Path | None = None,
+    pixel_count: int = DEFAULT_PIXEL_COUNT,
 ) -> PreparedFirmware:
-    """Copy firmware into *output_dir*, patching the data pin when requested."""
+    """Copy firmware into *output_dir*, patching the data pin and ring size."""
     root = source_root or repo_root()
     output = output_dir.resolve()
 
@@ -132,6 +134,7 @@ def prepare_firmware_files(
         code_text = (source_dir / "code.py").read_text(encoding="utf-8")
         if pin_expr is not None:
             code_text = _replace_assignment(code_text, "NEOPIXEL_PIN", pin_expr)
+        code_text = _replace_assignment(code_text, "NUM_PIXELS", str(pixel_count))
         files = (
             _copy_text_file(source_dir / "boot.py", output / "boot.py"),
             _copy_text_file(source_dir / "code.py", output / "code.py", code_text),
@@ -151,6 +154,7 @@ def prepare_firmware_files(
         main_text = (source_dir / "main.py").read_text(encoding="utf-8")
         if pin_expr is not None:
             main_text = _replace_assignment(main_text, "NEOPIXEL_PIN", pin_expr)
+        main_text = _replace_assignment(main_text, "NUM_PIXELS", str(pixel_count))
         files = (
             _copy_text_file(source_dir / "boot.py", output / "boot.py"),
             _copy_text_file(source_dir / "ring_cdc.py", output / "ring_cdc.py"),
@@ -169,6 +173,7 @@ def prepare_firmware_files(
         header_text = (source_dir / "copilot_types.h").read_text(encoding="utf-8")
         if pin_expr is not None:
             header_text = _replace_define(header_text, "NEOPIXEL_PIN", pin_expr)
+        header_text = _replace_define(header_text, "PIXEL_COUNT", str(pixel_count))
 
         files = []
         for path in source_dir.iterdir():
@@ -246,6 +251,21 @@ def install_circuitpython_files(prepared: PreparedFirmware, target_drive: Path) 
     return tuple(written)
 
 
+def _circup_executable(python_executable: Path) -> Path:
+    """Return the ``circup`` entry-point script that ships next to *python_executable*.
+
+    ``circup`` is a package with no ``__main__.py``, so ``python -m circup``
+    fails with ``No module named circup.__main__``. Instead, invoke the
+    installed entry-point script — ``circup.exe`` on Windows, ``circup``
+    elsewhere — which both ``pip`` and ``circup`` itself install into the
+    same scripts directory as ``python``.
+    """
+    scripts_dir = python_executable.parent
+    if os.name == "nt":
+        return scripts_dir / "circup.exe"
+    return scripts_dir / "circup"
+
+
 def install_circuitpython_neopixel(
     target_drive: Path,
     python_executable: Path,
@@ -257,13 +277,12 @@ def install_circuitpython_neopixel(
         raise FirmwareInstallError(f"CircuitPython target is not a directory: {target_drive}")
 
     (target_drive / "lib").mkdir(exist_ok=True)
+    circup_exe = _circup_executable(python_executable)
     try:
         runner([str(python_executable), "-m", "pip", "install", "--upgrade", "circup"])
         runner(
             [
-                str(python_executable),
-                "-m",
-                "circup",
+                str(circup_exe),
                 "--path",
                 str(target_drive),
                 "install",

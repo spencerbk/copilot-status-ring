@@ -22,8 +22,8 @@
 #define SERIAL_BAUD       115200
 #define SERIAL_BUF_SIZE   256
 #define MAX_SESSIONS      8
-#define STALE_TIMEOUT_MS  300000UL  // 300 s — prune sessions with no messages
-#define SERIAL_SILENCE_MS 600000UL  // 600 s — reset when active sessions + no serial
+#define STALE_TIMEOUT_MS  1200000UL // 1200 s (20 min) — prune sessions with no messages
+#define SERIAL_SILENCE_MS 1500000UL // 1500 s (25 min) — reset when active sessions + no serial (must be ≥ STALE_TIMEOUT_MS)
 #define WATCHDOG_MS       8000      // 8 s hardware watchdog
 #define MAX_CONSEC_ERRORS 10        // force reset after consecutive parse failures
 #define LOOP_DELAY_MS     20        // ~50 fps

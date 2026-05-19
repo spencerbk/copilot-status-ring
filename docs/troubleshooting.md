@@ -5,6 +5,7 @@ Common issues and solutions for the Copilot Command Ring.
 ## Contents
 
 - [Symptom index](#symptom-index)
+- [Run the doctor first](#run-the-doctor-first)
 - [Start with these checks](#start-with-these-checks)
 - ["No serial port detected"](#no-serial-port-detected)
 - [`copilot-command-ring: command not found`](#copilot-command-ring-command-not-found)
@@ -23,19 +24,38 @@ Common issues and solutions for the Copilot Command Ring.
 
 ---
 
+## Run the doctor first
+
+For most "ring isn't doing what I expect" problems, the fastest path to a
+diagnosis is the bundled health check:
+
+```text
+/status-ring-doctor          # inside Copilot CLI
+copilot-command-ring doctor  # from any shell
+```
+
+It walks the same path a hook walks (config -> port discovery -> matcher ->
+lock -> serial write) and prints exactly which step failed. Add `--no-ping`
+to skip the test write to the device and just observe the static state.
+
+---
+
 ## Symptom index
 
 If you already know what is failing, start here:
 
 | Symptom | Start here |
 |---------|------------|
+| Anything you don't immediately recognize | [Run the doctor first](#run-the-doctor-first) |
 | Host says no port was found, or the ring warning says it may be offline | ["No serial port detected"](#no-serial-port-detected) and [Ring appears offline / hook silently doing nothing](#ring-appears-offline--hook-silently-doing-nothing) |
 | `copilot-command-ring: command not found` | [`copilot-command-ring: command not found`](#copilot-command-ring-command-not-found) |
 | `pyserial` import or install errors | ["pyserial not installed"](#pyserial-not-installed) |
 | Copilot CLI runs, but the ring never changes | [Hooks not firing](#hooks-not-firing), then [Ring doesn't light up](#ring-doesnt-light-up) |
 | The startup wipe never appears | [Ring doesn't light up](#ring-doesnt-light-up) |
 | The ring works at first, then freezes, goes dark, or stays on an old state | [Ring becomes unresponsive after long sessions](#ring-becomes-unresponsive-after-long-sessions) |
+| The ring goes dark while you are still chatting in another terminal | [Ring goes dark unexpectedly during active sessions](#ring-goes-dark-unexpectedly-during-active-sessions) |
 | MicroPython CDC, `NEOPIXEL_PIN`, ESP32-C3/C6, or `mpremote` problems | [MicroPython-specific issues](#micropython-specific-issues) |
+| You pulled a host-side fix from `dev`/`main` but the ring still misbehaves | [Recover from a stale install](#animations-look-wrong) |
 | Permission denied opening a serial port | [Permission denied on serial port](#permission-denied-on-serial-port) |
 | Copilot CLI reports hook/control-output errors | [Hook causes Copilot errors](#hook-causes-copilot-errors) |
 | Multiple terminals or repositories are sharing one ring | [Multiple Copilot CLI sessions](#multiple-copilot-cli-sessions) |
@@ -44,7 +64,22 @@ If you already know what is failing, start here:
 
 ## Start with these checks
 
-If you are not sure where the problem is, check the four layers in this order:
+If you are not sure where the problem is, start with the doctor — it runs all
+four checks below in one shot and prints exactly which one failed:
+
+```powershell
+# Inside Copilot CLI:
+/status-ring-doctor
+
+# Or from any shell:
+copilot-command-ring doctor
+```
+
+The doctor reports config provenance, port enumeration, descriptor matching,
+lock state, and (by default) sends a transient ping to the ring. Add
+`--no-ping` to skip the test write. Exit code is `0` when every check passes.
+
+If you prefer a manual walk-through, check the four layers in this order:
 
 1. **Hooks installed:** On macOS/Linux, run `./install.sh` from a local clone. For manual installs, run `copilot-command-ring setup` for global hooks, or `copilot-command-ring deploy <path>` for one repo.
 2. **Host can send:** Run `python -m copilot_command_ring.simulate --dry-run` and confirm JSON Lines are printed.
@@ -56,6 +91,19 @@ If you are not sure where the problem is, check the four layers in this order:
 ## "No serial port detected"
 
 The host bridge can't find your microcontroller.
+
+**First, run the doctor:**
+
+```powershell
+copilot-command-ring doctor --no-ping
+```
+
+It enumerates every port the OS sees, lists the descriptor strings the host
+tries to match against, and tells you whether your device showed up at all.
+The two most common outcomes are: (a) no ports enumerated → cable / port /
+driver problem; (b) ports enumerated but none matched → add a substring of
+your device's description to `device_match.description_contains` in
+`.copilot-command-ring.local.json`, or set `serial_port` directly.
 
 **Check the USB cable:**
 
@@ -281,7 +329,7 @@ Recent firmware variants include several safeguards for long-running sessions:
 
 - `sessionEnd` and stale-session pruning fall back to a dim breathing animation instead of going dark. The ring only turns fully off when the host config sets `idle_mode` to `"off"`.
 - Per-state TTL decay: a crashed session stuck on `working` or `awaiting_permission` automatically decays to `agent_idle` after a few minutes, even if no further messages arrive.
-- Serial-silence watchdog: if active sessions exist but the firmware receives zero bytes for 10 minutes, it reloads to recover from a wedged USB CDC channel (common on Windows with USB selective suspend).
+- Serial-silence watchdog: if active sessions exist but the firmware receives zero bytes for 25 minutes, it reloads to recover from a wedged USB CDC channel (common on Windows with USB selective suspend). The watchdog is sized larger than the 20-minute stale-prune so pruning happens first whenever a session quietly stops sending.
 - A capped byte buffer so malformed or partial serial data without a newline cannot grow forever in RAM.
 - Draining all queued JSON lines each loop so valid traffic cannot backlog indefinitely in memory.
 - Reading buffered serial data regardless of USB connection state so messages are never lost between rapid hook invocations.
@@ -358,13 +406,55 @@ If you see this, run a Copilot CLI session with `COPILOT_RING_LOG_LEVEL=DEBUG` t
 
 ---
 
+## Ring goes dark unexpectedly during active sessions
+
+If the ring breathes for a while and then falls fully dark even though you are still chatting in one or more Copilot CLI terminals, the host config has `"idle_mode": "off"` somewhere in the precedence chain.
+
+Older versions of this README told users to hand-create `<repo>/.copilot-command-ring.local.json` with `"idle_mode": "off"`. The current wizard prompts for idle mode and writes the file for you; leftover copies of the old hand-written file shadow the wizard's global save.
+
+**Fix:**
+
+1. Run `/setup-status-ring` and pick **Breathing — ring stays dim when idle (recommended)** at the new prompt. The wizard saves your choice to `~/.copilot-command-ring.local.json` (global scope) or `<repo>/.copilot-command-ring.local.json` (per-repo scope, when you launch the wizard from inside the repo).
+2. If the wizard prints a `Warning: ... shadows the global save` line, that's a stale per-repo file from before idle mode was a wizard prompt. Either delete it or change its `idle_mode` to `breathing`.
+3. Re-run the wizard or restart the affected Copilot CLI processes so the host bridge reloads its config.
+
+You can confirm what the host actually loaded:
+
+```powershell
+copilot-command-ring doctor
+```
+
+The `Config loaded from` line points at the winning file, and the printed config includes the resolved `idle_mode`.
+
+---
+
 ## Animations look wrong
 
 LEDs are lighting up but the patterns are incorrect.
 
 **Check pixel count:**
 
-The default firmware is configured for 24 pixels (NeoPixel Ring product 1586). If you're using a different ring size, set `pixel_count` in `.copilot-command-ring.local.json` or `COPILOT_RING_PIXEL_COUNT`; current firmware applies it after the first host message. To change the startup wipe before any host message arrives, update the firmware/sketch default too.
+The host bridge sends `pixel_count` to the firmware in every message and the firmware applies it at runtime, so you don't need to reflash for a different ring size. The easiest way to set it is the setup wizard (`setup-status-ring`), which prompts for 24 / 16 / 12 LEDs and writes the choice into `.copilot-command-ring.local.json`. You can also set `pixel_count` directly in that file or via the `COPILOT_RING_PIXEL_COUNT` environment variable. The spinner segment auto-scales to ~25 % of the ring (with a 2-LED floor), so only the ring size needs to match — animations adapt automatically.
+
+The firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT` (Arduino) is `24`, used only for the startup wipe before the first host message arrives. `setup-status-ring` rewrites that constant in the copied source when you flash through the wizard, so the wipe already matches your ring. If you flash without the wizard, edit `NUM_PIXELS` / `#define PIXEL_COUNT` to your ring size before uploading for a perfectly clean boot animation.
+
+**The host keeps sending the wrong `pixel_count` even though you saved a new one in the wizard:**
+
+The host loads `.copilot-command-ring.local.json` by walking up from the current working directory and, if it finds nothing in that chain, falling back to `~/.copilot-command-ring.local.json` (where the wizard's "global" scope writes). A per-repo file always wins over the home-level one. If the wizard saved `pixel_count: 16` globally but your ring is still showing the 24-LED-default spinner pattern (segment shrinks at the end of a sweep, then grows back from zero), check whether a stale `<repo>/.copilot-command-ring.local.json` is shadowing the global file — these are `.gitignore`d, so a leftover from earlier experimentation is easy to miss. Either delete the per-repo file or update its `pixel_count` to match your ring.
+
+**Recover from a stale install (host fixes shipped but ring still misbehaves):**
+
+The wizard installs `copilot-command-ring` into `<repo>/.venv` via `pip install`. When the wizard installs from a **local clone**, the install is now editable, so a `git pull` updates `site-packages` automatically. When the wizard installed from the **`git+https://...` URL** (no clone detected, or an older install pre-dating the editable-install change), `site-packages` is a frozen snapshot — `git pull` will not reach it, and your hooks keep running the previous version of the host code.
+
+Symptom: a documented host-side fix shipped on `dev` / `main`, you pulled, but the ring still shows the prior buggy behaviour.
+
+Fix: run
+
+```powershell
+copilot-command-ring refresh
+```
+
+`refresh` re-runs only the wizard's pip install step (no prompts, no firmware writes, no hook redeployment). It uses the same auto-detection as the wizard: a local clone yields an editable reinstall; otherwise it upgrades the frozen install from the GitHub URL. The hooks pick up the new code on the next event because they import from `site-packages` each invocation.
 
 **Check data pin:**
 
@@ -508,7 +598,7 @@ The host bridge tags every serial message with a session identifier. Current Cop
 - ✅ The ring displays the most "interesting" state across all active sessions — for example, if one session is working and another is idle, the ring shows the working spinner.
 - ✅ When a session ends, the ring seamlessly continues showing the remaining sessions' state instead of going dark.
 - ⚠️ The ring cannot display two sessions simultaneously as separate animations — it shows the single highest-priority state.
-- ⚠️ If a Copilot CLI crashes without sending `sessionEnd`, the firmware prunes the stale session after 5 minutes. Once all sessions are pruned — or when a session ends explicitly with `sessionEnd` — the ring shows a dim breathing animation (`agent_idle`) indefinitely so it is never dark by surprise. The next Copilot session lights it back up instantly. To revert to the pre-v1.2 behavior where `sessionEnd` turns the ring fully dark, set `"idle_mode": "off"` in `.copilot-command-ring.local.json`. Power-cycling is no longer required for recovery.
+- ⚠️ If a Copilot CLI crashes without sending `sessionEnd`, the firmware prunes the stale session after 20 minutes. Once all sessions are pruned — or when a session ends explicitly with `sessionEnd` — the ring shows a dim breathing animation (`agent_idle`) indefinitely so it is never dark by surprise. The next Copilot session lights it back up instantly. To revert to the pre-v1.2 behavior where `sessionEnd` turns the ring fully dark, re-run `/setup-status-ring` and pick **Off** at the "How should the ring look when Copilot is idle?" prompt. Power-cycling is no longer required for recovery.
 
 **If the ring seems stuck or unresponsive during multi-session use:**
 

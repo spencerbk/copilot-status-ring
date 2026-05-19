@@ -32,15 +32,15 @@ NEOPIXEL_PIN = None
 NUM_PIXELS = 24
 BRIGHTNESS = 0.04  # keep low to avoid blinding / power issues
 BRIGHTNESS_BOOST = 0.02  # extra brightness for dim states (breathing)
-SPINNER_WIDTH = 6  # number of LEDs in the spinner segment
+SPINNER_WIDTH = 6  # baseline spinner segment; runtime default auto-scales as max(2, num_pixels // 4)
 LOOP_DELAY_MS = 20  # ~50 fps
 SERIAL_BUF_MAX = 512  # discard buffer if no newline within this many bytes
 SERIAL_READ_CHUNK = 256  # max bytes to drain per loop without blocking animation
 WATCHDOG_TIMEOUT_MS = 8000  # keep longer than normal render loop latency
 MAX_CONSECUTIVE_ERRORS = 10  # force reload after this many consecutive loop failures
-SERIAL_SILENCE_TIMEOUT_S = 600  # seconds of zero received bytes → reset when sessions active
+SERIAL_SILENCE_TIMEOUT_S = 1500  # seconds of zero received bytes → reset when sessions active (must be ≥ STALE_TIMEOUT_S so pruning happens before USB recovery)
 DEFAULT_IDLE_MODE = "breathing"  # used when no message has set one yet
-STALE_TIMEOUT_S = 300  # seconds before an idle session is pruned
+STALE_TIMEOUT_S = 1200  # seconds before an idle session is pruned (20 min — long enough for normal user read+type gaps)
 MAX_RUNTIME_PIXELS = 512  # guard against oversized host config on tiny boards
 
 # ── Time helpers (wraparound-safe) ─────────────────────────────────────────
@@ -106,7 +106,7 @@ STATE_MAP = {
     "working":             (
         "spinner",
         COLOR_WORKING,
-        {"width": SPINNER_WIDTH, "period": 1.0},
+        {"period": 1.0},
     ),
     "tool_ok":             ("flash",     COLOR_TOOL_OK,       {"duration": 0.3}),
     "tool_error":          ("flash",     COLOR_TOOL_ERROR,    {"duration": 0.3}),
@@ -268,7 +268,7 @@ class StatusRing:
         elif anim_name == "spinner":
             self._anim_spinner(
                 color, elapsed,
-                kwargs.get("width", SPINNER_WIDTH),
+                kwargs.get("width", max(2, self.num_pixels // 4)),
                 kwargs.get("period", 1.0),
             )
         elif anim_name == "wipe":
@@ -331,7 +331,10 @@ class StatusRing:
 
     def _anim_spinner(self, color, elapsed, width, period):
         frac = (elapsed % period) / period
-        head = int(frac * self.num_pixels) % self.num_pixels
+        # Adafruit NeoPixel rings are wired so LED indices increase
+        # counter-clockwise when viewed from the LED face. Negate the
+        # head's motion so the lit segment appears to rotate clockwise.
+        head = (-int(frac * self.num_pixels)) % self.num_pixels
         for i in range(self.num_pixels):
             dist = (head - i) % self.num_pixels
             if dist < width:

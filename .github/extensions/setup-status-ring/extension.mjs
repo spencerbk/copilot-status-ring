@@ -31,7 +31,7 @@ function pythonEnv() {
     };
 }
 
-function runPythonCandidate(candidate, args, input) {
+function runPythonCandidate(candidate, args, input, { allowNonZero = false } = {}) {
     return new Promise((resolve, reject) => {
         const child = execFile(
             candidate.executable,
@@ -44,12 +44,20 @@ function runPythonCandidate(candidate, args, input) {
             },
             (error, stdout, stderr) => {
                 if (error) {
+                    if (allowNonZero && error.code !== "ENOENT") {
+                        // Doctor and other diagnostic commands intentionally exit
+                        // non-zero when checks fail. Their stdout *is* the report
+                        // we want to surface, so preserve it instead of throwing
+                        // away with only the stderr line.
+                        resolve({ stdout, stderr, code: error.code ?? 1 });
+                        return;
+                    }
                     const wrapped = new Error(stderr || error.message);
                     wrapped.code = error.code;
                     reject(wrapped);
                     return;
                 }
-                resolve({ stdout, stderr });
+                resolve({ stdout, stderr, code: 0 });
             },
         );
         if (input !== undefined) {
@@ -58,11 +66,11 @@ function runPythonCandidate(candidate, args, input) {
     });
 }
 
-async function runPython(args, input) {
+async function runPython(args, input, options) {
     let lastError;
     for (const candidate of pythonCandidates) {
         try {
-            return await runPythonCandidate(candidate, args, input);
+            return await runPythonCandidate(candidate, args, input, options);
         } catch (error) {
             lastError = error;
             if (error.code !== "ENOENT") {
@@ -96,6 +104,76 @@ async function detectCircuitPy(session) {
         await session.log(`CIRCUITPY drive detection failed: ${error.message}`, { level: "warning" });
         return { detected: false, path: null };
     }
+}
+
+async function loadPorts(session) {
+    try {
+        const { stdout } = await runPython(["setup-status-ring", "--list-ports-json"]);
+        const parsed = JSON.parse(stdout);
+        return Array.isArray(parsed.ports) ? parsed.ports : [];
+    } catch (error) {
+        await session.log(`Serial port enumeration failed: ${error.message}`, {
+            level: "warning",
+        });
+        return [];
+    }
+}
+
+async function pickSerialPort(session, autoDetected) {
+    // 3-option flow when auto-detect found a match, 2-option flow otherwise.
+    // Always offers "Skip" so the user can leave any pre-existing saved port
+    // untouched. Returns the chosen device string (e.g. "COM12") or null
+    // when the user skipped.
+    const USE_DETECTED = "use_detected";
+    const PICK_DIFFERENT = "pick_different";
+    const PICK_FROM_LIST = "pick_from_list";
+    const SKIP = "skip";
+
+    const options = [];
+    if (autoDetected) {
+        options.push({ label: `Use ${autoDetected} (auto-detected)`, value: USE_DETECTED });
+        options.push({ label: "Pick a different port", value: PICK_DIFFERENT });
+    } else {
+        options.push({ label: "Pick a port from the list", value: PICK_FROM_LIST });
+    }
+    options.push({ label: "Skip — keep any existing saved port", value: SKIP });
+
+    const decisionLabel = await session.ui.select(
+        "How should the ring's serial port be configured?",
+        options.map((option) => option.label),
+    );
+    if (!decisionLabel) {
+        // Dismiss => skip (do not abort the wizard).
+        await session.log("Port selection skipped; keeping any existing saved port.");
+        return null;
+    }
+    const decision = optionByLabel(options, decisionLabel);
+    if (decision === USE_DETECTED) return autoDetected;
+    if (decision === SKIP) return null;
+
+    const ports = await loadPorts(session);
+    if (ports.length === 0) {
+        await session.log(
+            "No serial ports could be enumerated. Skipping port selection.",
+            { level: "warning" },
+        );
+        return null;
+    }
+    const portItems = ports.map((entry) => ({
+        label: entry.description
+            ? `${entry.device} — ${entry.description}`
+            : entry.device,
+        value: entry.device,
+    }));
+    const portLabel = await session.ui.select(
+        "Which serial port should the ring use?",
+        portItems.map((item) => item.label),
+    );
+    if (!portLabel) {
+        await session.log("No port chosen; keeping any existing saved port.");
+        return null;
+    }
+    return optionByLabel(portItems, portLabel);
 }
 
 function optionByLabel(items, label) {
@@ -164,32 +242,84 @@ async function collectSelections(session) {
     });
     if (dataPin === null) return null;
 
+    const pixelOptions = [
+        { label: "24 LEDs — Adafruit NeoPixel Ring 24 (product 1586)", value: 24 },
+        { label: "16 LEDs — Adafruit NeoPixel Ring 16 (product 1463)", value: 16 },
+        { label: "12 LEDs — Adafruit NeoPixel Ring 12 (product 1643)", value: 12 },
+    ];
+    const pixelLabel = await session.ui.select(
+        "Which ring size do you have?",
+        pixelOptions.map((option) => option.label),
+    );
+    let pixelCount;
+    if (!pixelLabel) {
+        // Don't abort the entire wizard if the user dismisses this prompt —
+        // ring size has a sensible default (24 LEDs, the Adafruit Ring 24).
+        // The setup wizard previously silently bailed here, which made it
+        // look like the prompt never ran. Fail open instead.
+        pixelCount = 24;
+        await session.log("Ring size defaulted to 24 LEDs (Adafruit Ring 24).");
+    } else {
+        pixelCount = pixelOptions.find((option) => option.label === pixelLabel).value;
+    }
+
+    const idleOptions = [
+        {
+            label: "Breathing — stay dim when idle (recommended)",
+            value: "breathing",
+        },
+        { label: "Off — go dark when all sessions end", value: "off" },
+    ];
+    const idleLabel = await session.ui.select(
+        "How should the ring look when Copilot is idle?",
+        idleOptions.map((option) => option.label),
+    );
+    let idleMode;
+    if (!idleLabel) {
+        // Mirror the ring-size fail-open: dismissed dialogs fall back to the
+        // safer default (breathing) so users who hit Esc don't accidentally
+        // pick "off" and then wonder why their ring goes dark.
+        idleMode = "breathing";
+        await session.log(
+            'Idle mode defaulted to "breathing" (ring stays dim when idle).',
+        );
+    } else {
+        idleMode = idleOptions.find((option) => option.label === idleLabel).value;
+    }
+
     const autoDetectPort = await session.ui.confirm(
         "Attempt host USB serial auto-detection before setup?",
     );
     let approveFirmware = false;
     let firmwareTarget = null;
+    let serialPort = null;
     if (autoDetectPort) {
         const detection = await detectPort(session);
         if (detection.detected) {
             await session.log(`Detected serial device: ${detection.port}`);
-            approveFirmware = await session.ui.confirm(
-                "Approve writing or preparing firmware for this connected board?",
-            );
-            if (approveFirmware && runtimeId === "circuitpython") {
-                const circuitpy = await detectCircuitPy(session);
-                firmwareTarget = await session.ui.input("CIRCUITPY drive path", {
-                    title: "CircuitPython target drive",
-                    description:
-                        "Leave blank to prepare firmware only and copy it manually later.",
-                    default: circuitpy.path || "",
-                });
-                if (firmwareTarget === "") firmwareTarget = null;
-            }
         } else {
-            await session.log("No matching serial device was detected; firmware upload stays manual.", {
-                level: "warning",
+            await session.log(
+                "No matching serial device was auto-detected.",
+                { level: "warning" },
+            );
+        }
+        serialPort = await pickSerialPort(session, detection.port || null);
+        // Firmware approval is independent of the port choice — CircuitPython
+        // firmware copies to the CIRCUITPY drive, which has no relation to the
+        // host's data serial port. Even when the user skipped the port choice,
+        // they can still approve firmware install.
+        approveFirmware = await session.ui.confirm(
+            "Approve writing or preparing firmware for this connected board?",
+        );
+        if (approveFirmware && runtimeId === "circuitpython") {
+            const circuitpy = await detectCircuitPy(session);
+            firmwareTarget = await session.ui.input("CIRCUITPY drive path", {
+                title: "CircuitPython target drive",
+                description:
+                    "Leave blank to prepare firmware only and copy it manually later.",
+                default: circuitpy.path || "",
             });
+            if (firmwareTarget === "") firmwareTarget = null;
         }
     }
 
@@ -203,6 +333,9 @@ async function collectSelections(session) {
         approve_firmware: approveFirmware,
         firmware_target: firmwareTarget,
         force_hooks: true,
+        pixel_count: pixelCount,
+        serial_port: serialPort,
+        idle_mode: idleMode,
     };
 }
 
@@ -239,6 +372,33 @@ async function runSetup(session) {
     await session.log(output || "Copilot Command Ring setup complete.");
 }
 
+async function runDoctor(session) {
+    // Pass --config-dir process.cwd() so the doctor evaluates the user's
+    // session cwd, not the extension's repoRoot install location -- without
+    // this override the doctor would silently load the wrong config file.
+    const configDir = process.cwd();
+    let result;
+    try {
+        result = await runPython(["doctor", "--config-dir", configDir], undefined, {
+            allowNonZero: true,
+        });
+    } catch (error) {
+        await session.log(`status-ring-doctor failed to launch: ${error.message}`, {
+            level: "error",
+        });
+        return;
+    }
+    const body = [result.stdout.trim(), result.stderr.trim()]
+        .filter(Boolean)
+        .join("\n");
+    const message = body || "(doctor produced no output)";
+    if (result.code === 0) {
+        await session.log(message);
+    } else {
+        await session.log(message, { level: "error" });
+    }
+}
+
 let session;
 session = await joinSession({
     commands: [
@@ -253,6 +413,14 @@ session = await joinSession({
                         level: "error",
                     });
                 }
+            },
+        },
+        {
+            name: "status-ring-doctor",
+            description:
+                "Health check: verify config, port enumeration, descriptor match, lock state, and send a transient ping",
+            handler: async () => {
+                await runDoctor(session);
             },
         },
     ],

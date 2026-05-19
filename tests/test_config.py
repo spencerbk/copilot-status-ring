@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from copilot_command_ring.config import Config, load_config
@@ -312,3 +313,86 @@ def test_dry_run_not_set(tmp_path, monkeypatch):
     monkeypatch.delenv(ENV_DRY_RUN, raising=False)
     cfg = load_config(config_dir=tmp_path)
     assert cfg.dry_run is False
+
+
+# ── Home-directory fallback ───────────────────────────────────────────────
+#
+# When the parent-chain walk from `config_dir` finds nothing, the loader
+# falls back to `~/.copilot-command-ring.local.json` — the well-known
+# location the setup wizard writes for the "global" scope. Without this
+# fallback the wizard's globally-saved pixel_count/serial_port only takes
+# effect when the CWD lives under the user's home tree, which silently
+# breaks hooks in any other working directory.
+#
+# Helpers are tested in isolation because the integration path
+# (load_config → find_config_path → _find_config_in_cwd_chain) walks the
+# real filesystem and may pass through the developer's real
+# ``~/.copilot-command-ring.local.json``, which would defeat any
+# tmp_path-based isolation.
+
+
+def test_find_config_in_home_returns_path_when_file_exists(tmp_path, monkeypatch):
+    from copilot_command_ring.config import _find_config_in_home
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    target = tmp_path / ".copilot-command-ring.local.json"
+    target.write_text(json.dumps({"pixel_count": 16}), encoding="utf-8")
+    assert _find_config_in_home() == target
+
+
+def test_find_config_in_home_returns_none_when_file_missing(tmp_path, monkeypatch):
+    from copilot_command_ring.config import _find_config_in_home
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    assert _find_config_in_home() is None
+
+
+def test_find_config_in_home_handles_home_failure(monkeypatch):
+    from copilot_command_ring.config import _find_config_in_home
+
+    def _raise():
+        raise RuntimeError("no home")
+
+    monkeypatch.setattr(Path, "home", _raise)
+    assert _find_config_in_home() is None
+
+
+def test_find_config_path_prefers_cwd_chain_over_home(monkeypatch):
+    """When the parent-chain walk finds a file, the home fallback is ignored."""
+    from copilot_command_ring import config as config_mod
+
+    cwd_path = Path("/fake/cwd/.copilot-command-ring.local.json")
+    home_path = Path("/fake/home/.copilot-command-ring.local.json")
+    monkeypatch.setattr(
+        config_mod, "_find_config_in_cwd_chain", lambda _start: cwd_path,
+    )
+    monkeypatch.setattr(
+        config_mod, "_find_config_in_home", lambda: home_path,
+    )
+    assert config_mod.find_config_path(Path("/fake/cwd")) == cwd_path
+
+
+def test_find_config_path_falls_back_to_home_when_cwd_chain_empty(monkeypatch):
+    """When the parent-chain walk finds nothing, the home fallback wins."""
+    from copilot_command_ring import config as config_mod
+
+    home_path = Path("/fake/home/.copilot-command-ring.local.json")
+    monkeypatch.setattr(
+        config_mod, "_find_config_in_cwd_chain", lambda _start: None,
+    )
+    monkeypatch.setattr(
+        config_mod, "_find_config_in_home", lambda: home_path,
+    )
+    assert config_mod.find_config_path(Path("/fake/cwd")) == home_path
+
+
+def test_find_config_path_returns_none_when_both_miss(monkeypatch):
+    from copilot_command_ring import config as config_mod
+
+    monkeypatch.setattr(
+        config_mod, "_find_config_in_cwd_chain", lambda _start: None,
+    )
+    monkeypatch.setattr(
+        config_mod, "_find_config_in_home", lambda: None,
+    )
+    assert config_mod.find_config_path(Path("/fake/cwd")) is None

@@ -147,3 +147,83 @@ class TestSimulateMain:
         captured = capsys.readouterr()
         assert "Starting simulation" in captured.err
         assert "Simulation complete" in captured.err
+
+
+class TestQuietMode:
+    """--quiet suppresses per-event chatter for the setup-wizard validation step."""
+
+    def test_run_sequence_quiet_suppresses_per_event_lines(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        config = _make_config()
+        sequence = [
+            ("sessionStart", {}),
+            ("preToolUse", {"toolName": "bash"}),
+            ("sessionEnd", {}),
+        ]
+        with (
+            patch("copilot_command_ring.simulate.send_event", return_value=True),
+            patch("copilot_command_ring.simulate.time"),
+        ):
+            failures = run_sequence(config, sequence, delay=0.0, quiet=True)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "sessionStart" not in captured.err
+        assert "[1/3]" not in captured.err
+        assert "[2/3]" not in captured.err
+        assert "[3/3]" not in captured.err
+        assert failures == 0
+
+    def test_run_sequence_quiet_returns_failure_count(self) -> None:
+        config = _make_config()
+        sequence = [("sessionStart", {}), ("sessionEnd", {})]
+
+        # First call ok, second call fails. send_event(config, message) is invoked
+        # once per event, so set side_effect to control per-event outcomes.
+        with (
+            patch(
+                "copilot_command_ring.simulate.send_event",
+                side_effect=[True, False],
+            ),
+            patch("copilot_command_ring.simulate.time"),
+        ):
+            failures = run_sequence(config, sequence, delay=0.0, quiet=True)
+
+        assert failures == 1
+
+    def test_main_quiet_skips_banner_and_uses_summary_line(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with (
+            patch("sys.argv", ["simulate", "--dry-run", "--delay", "0", "--quiet"]),
+            patch(
+                "copilot_command_ring.simulate.run_sequence",
+                return_value=0,
+            ),
+            patch("copilot_command_ring.simulate.load_config", return_value=_make_config()),
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        assert "Starting simulation" not in captured.err
+        assert "Simulation complete" in captured.err
+        # The summary surfaces total events and failure count on a single line.
+        assert f"{len(DEFAULT_SEQUENCE)} events" in captured.err
+        assert "ok" in captured.err
+
+    def test_main_quiet_surfaces_failure_count(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with (
+            patch("sys.argv", ["simulate", "--dry-run", "--delay", "0", "--quiet"]),
+            patch(
+                "copilot_command_ring.simulate.run_sequence",
+                return_value=3,
+            ),
+            patch("copilot_command_ring.simulate.load_config", return_value=_make_config()),
+        ):
+            main()
+
+        captured = capsys.readouterr()
+        assert "3 failed" in captured.err

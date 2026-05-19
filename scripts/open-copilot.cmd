@@ -17,7 +17,7 @@ setlocal EnableDelayedExpansion
 :: -----------------------------------------------------------
 :: Deploy-provided default tab color (hex).
 :: -----------------------------------------------------------
-set "TAB_COLOR=#787878"
+set "TAB_COLOR=#963885"
 
 :: -----------------------------------------------------------
 :: Derived values (from this script's filesystem location)

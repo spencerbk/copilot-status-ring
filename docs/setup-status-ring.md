@@ -10,16 +10,60 @@ keeping the durable setup logic in the Python package.
    user-level venv at `~/.local/share/copilot-command-ring/.venv` /
    `%LOCALAPPDATA%\copilot-command-ring\.venv` if no clone is detected).
 2. Installs or upgrades `copilot-command-ring` into that environment from your
-   local clone path (no network needed). Falls back to
+   local clone path (no network needed). The wizard auto-detects local clones
+   and installs them **editable** (`pip install -e .`), so `git pull` is enough
+   to pick up host-side fixes — you do **not** need to re-run the wizard after
+   updating. Falls back to a frozen install from
    `git+https://github.com/spencerbk/copilot-status-ring.git` when no clone is
-   detected.
+   detected; users on that path should run `copilot-command-ring refresh` to
+   pick up upstream changes (see
+   [Recover from a stale install](troubleshooting.md#animations-look-wrong)).
 3. Asks whether hooks should be installed globally for all repos or deployed to
    one target repo.
-4. Prompts for the board, firmware runtime, and NeoPixel data pin using the
-   current supported-board matrix.
-5. Attempts host USB serial auto-detection when requested.
+4. Prompts for the board, firmware runtime, NeoPixel data pin, ring size
+   (24 / 16 / 12 LEDs), and **idle mode** (**Breathing** keeps the ring lit
+   with a dim breathing animation when every session is silent — the default;
+   **Off** lets the ring go fully dark on `sessionEnd` or after a stale
+   prune). Dismissing the ring-size prompt defaults to **24 LEDs** (the
+   Adafruit NeoPixel Ring 24) instead of aborting setup; dismissing the
+   idle-mode prompt defaults to **Breathing**.
+5. Attempts host USB serial auto-detection when requested. After detection
+   the wizard offers three options:
+   - **Use `COMxx` (auto-detected)** — accept the detected port.
+   - **Pick a different port** — choose from every enumerable serial device
+     on the host.
+   - **Skip — keep any existing saved port** — leave the previously saved
+     `serial_port` (if any) untouched.
+
+   When auto-detection finds nothing, the wizard still offers "Pick a port
+   from the list" and "Skip". Firmware approval is asked as an independent
+   prompt regardless of the port choice — CircuitPython firmware writes to
+   the `CIRCUITPY` drive, which is independent of the host's data serial
+   port.
 6. Requires explicit approval before preparing or writing firmware files.
-7. Runs a dry-run simulation command after hooks are installed.
+   The chosen ring size is templated into the copied source — `NUM_PIXELS`
+   for CircuitPython/MicroPython and `#define PIXEL_COUNT` in the Arduino
+   `copilot_types.h` header — so the firmware boots with the correct LED
+   count even before the host bridge has sent its first message.
+7. Persists the chosen ring size, idle mode, and serial port to
+   `~/.copilot-command-ring.local.json` (global scope) or
+   `<repo>/.copilot-command-ring.local.json` (repo scope) by merging
+   `pixel_count`, `idle_mode` (when you've made a non-default selection or
+   the file already contains one), and `serial_port` (if you picked one)
+   into any existing config. Picking the default 24 with the default
+   breathing idle mode, no chosen port, and no existing file leaves no
+   file behind. **Precedence:** at hook time the host walks parents of
+   the working directory first and uses any per-repo file it finds; only
+   when no per-repo file exists does it fall back to the global
+   `~/.copilot-command-ring.local.json`. A stale per-repo file will
+   silently shadow the wizard's globally-saved choice — the wizard
+   prints a `Warning: ... shadows the global save` line when it detects
+   this case (see
+   ["Ring goes dark unexpectedly during active sessions"](troubleshooting.md#ring-goes-dark-unexpectedly-during-active-sessions)
+   and
+   ["The host keeps sending the wrong pixel_count"](troubleshooting.md#animations-look-wrong)
+   for recovery).
+8. Runs a dry-run simulation command after hooks are installed.
 
 CircuitPython can copy prepared `boot.py` and `code.py` to a detected or supplied
 `CIRCUITPY` drive and attempts to install the `neopixel` dependency with
@@ -60,6 +104,9 @@ For non-interactive callers, pass selections as JSON:
   "board_id": "raspberry-pi-pico",
   "runtime": "circuitpython",
   "data_pin": "board.GP6",
+  "pixel_count": 24,
+  "idle_mode": "breathing",
+  "serial_port": "COM12",
   "auto_detect_port": true,
   "approve_firmware": false,
   "force_hooks": true
@@ -67,7 +114,24 @@ For non-interactive callers, pass selections as JSON:
 '@ | copilot-command-ring setup-status-ring --from-json - --yes
 ```
 
+`pixel_count` is optional (defaults to `24`) and accepts `24`, `16`, or `12` —
+the wizard merges your choice into the local JSON config as a side effect, so a
+later run of the host bridge picks it up automatically.
+
+`idle_mode` is optional (defaults to `"breathing"`) and accepts `"breathing"`
+or `"off"`. Omitting it, leaving it empty, or passing `null` keeps the default;
+any other string is rejected as a setup error. The chosen value is persisted
+into the local JSON config when it is non-default or the file already contains
+an `idle_mode` entry.
+
+`serial_port` is optional. When set (e.g. `"COM12"`, `"/dev/ttyACM0"`), it is
+persisted into the same local JSON config so the host bridge uses it directly.
+When omitted or `null`, the wizard preserves any pre-existing `serial_port`
+entry instead of overwriting it.
+
 Use `--options-json` to inspect the board/runtime matrix consumed by the
-extension, `--plan-only` to print the commands that would run without
-executing them, and `--venv-dir` / `--package-spec` to override the auto-detected
-defaults (repo-local `.venv` and local-clone install spec).
+extension, `--list-ports-json` to enumerate every host serial port (the
+extension calls this for the manual port picker), `--plan-only` to print the
+commands that would run without executing them, and `--venv-dir` /
+`--package-spec` to override the auto-detected defaults (repo-local `.venv`
+and local-clone install spec).

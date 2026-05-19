@@ -17,7 +17,7 @@ CircuitPython firmware for the Copilot Command Ring.
 ## Files
 
 - `boot.py` — Sets custom USB product name ("Copilot Command Ring") and enables `usb_cdc.data` for host communication.
-- `code.py` — Main firmware with state machine and animations. Tracks multiple concurrent Copilot CLI sessions and displays the highest-priority state across all of them. Stale sessions (no messages for 5 minutes) are pruned; once every session is pruned or a session ends, the ring follows `idle_mode`: dim breathing by default, or fully off when `idle_mode` is `"off"`. Runtime `brightness` and `pixel_count` values from host messages are applied after receipt. For long-running sessions on small boards such as the Pico, it drains queued JSON-line serial input each loop, reads buffered data regardless of USB connection state (so messages are never lost between rapid hook invocations), clears stale partial input only on USB reconnect, runs garbage collection after serial parsing work, and uses watchdog/reload recovery when supported.
+- `code.py` — Main firmware with state machine and animations. Tracks multiple concurrent Copilot CLI sessions and displays the highest-priority state across all of them. Stale sessions (no messages for 20 minutes) are pruned; once every session is pruned or a session ends, the ring follows `idle_mode`: dim breathing by default, or fully off when `idle_mode` is `"off"`. Runtime `brightness` and `pixel_count` values from host messages are applied after receipt. For long-running sessions on small boards such as the Pico, it drains queued JSON-line serial input each loop, reads buffered data regardless of USB connection state (so messages are never lost between rapid hook invocations), clears stale partial input only on USB reconnect, runs garbage collection after serial parsing work, and uses watchdog/reload recovery when supported.
 
 ## Pin configuration
 
@@ -34,3 +34,11 @@ To override auto-detection, edit `NEOPIXEL_PIN` at the top of `code.py`:
 ```python
 NEOPIXEL_PIN = board.A0  # override auto-detection
 ```
+
+## Ring size
+
+The 24-LED Adafruit NeoPixel Ring (product 1586) is the default, but the 16-LED ring (product 1463) and the 12-LED ring (product 1643) are first-class targets too. The host bridge sends `pixel_count` to the firmware in every message and the firmware applies it at runtime — animations (including the working spinner) auto-scale to the ring you wired.
+
+The simplest way to set the value is the `setup-status-ring` wizard, which prompts for 24 / 16 / 12 and both writes the choice into `.copilot-command-ring.local.json` *and* templates `NUM_PIXELS` directly into the copied `code.py` so the boot wipe matches before the first host message arrives. You can also set `pixel_count` directly in that file or `COPILOT_RING_PIXEL_COUNT` in the environment.
+
+`NUM_PIXELS = 24` at the top of `code.py` is the *startup* default used only for the boot wipe before the first host message arrives. The setup wizard rewrites this when it copies firmware; edit it manually only if you are flashing without the wizard.
