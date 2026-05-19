@@ -41,6 +41,21 @@ PACKAGE_SPEC_DEFAULT = "git+https://github.com/spencerbk/copilot-status-ring.git
 SCOPE_GLOBAL = "global"
 SCOPE_REPO = "repo"
 
+# Heuristic for "the package spec points at a local source tree we can
+# install with ``pip install -e ...``". Used so contributors with a
+# clone get a live install that auto-updates after ``git pull``; users
+# installing from the GitHub URL stay frozen.
+_REMOTE_OR_VCS_PREFIXES = (
+    "git+",
+    "hg+",
+    "svn+",
+    "bzr+",
+    "http://",
+    "https://",
+    "file://",
+)
+_VERSION_OPERATORS = ("==", "!=", ">=", "<=", "~=", "===")
+
 _PYPROJECT_NAME_PATTERN = re.compile(
     r"^\s*name\s*=\s*['\"]copilot-command-ring['\"]\s*$",
     re.MULTILINE,
@@ -236,6 +251,118 @@ def default_package_spec(*, repo_root: Path | None = None) -> str:
     return PACKAGE_SPEC_DEFAULT
 
 
+def is_local_path_spec(spec: str) -> bool:
+    """Return ``True`` if *spec* points at a local source tree.
+
+    The wizard adds ``-e`` (editable) to ``pip install`` only when the
+    spec is a local path that exists on disk, so contributors working
+    from a clone get a live install that auto-updates after
+    ``git pull`` while end users installing from the GitHub URL keep
+    getting a frozen install (which is the only safe option for a
+    remote VCS spec without ``--src``).
+
+    Returns ``False`` for empty strings, URLs / VCS specs
+    (``git+...``, ``http(s)://...``, etc.), and PEP 508 version
+    specifiers (``copilot-command-ring==0.1.0``).
+    """
+    if not spec:
+        return False
+    if spec.startswith(_REMOTE_OR_VCS_PREFIXES):
+        return False
+    if any(op in spec for op in _VERSION_OPERATORS):
+        return False
+    try:
+        candidate = Path(spec).expanduser()
+    except (OSError, ValueError):
+        return False
+    try:
+        return candidate.is_dir()
+    except OSError:
+        return False
+
+
+def _build_pip_install_args(
+    venv_python: Path, package_spec: str,
+) -> tuple[str, ...]:
+    """Build the ``pip install`` argv for *package_spec*.
+
+    Injects ``-e`` when the spec is a local source tree so contributors
+    get a live install that auto-updates after ``git pull``. Falls back
+    to a frozen install for git URLs, version specifiers, or any spec
+    that does not resolve to a directory on disk.
+    """
+    base: tuple[str, ...] = (
+        str(venv_python),
+        "-m",
+        "pip",
+        "install",
+        "--quiet",
+        "--upgrade",
+    )
+    if is_local_path_spec(package_spec):
+        return (*base, "-e", package_spec)
+    return (*base, package_spec)
+
+
+def run_refresh(
+    *,
+    venv_dir: Path | None = None,
+    package_spec: str | None = None,
+    runner: Callable[[Sequence[str]], None] | None = None,
+) -> bool:
+    """Re-install / upgrade the host package into the wizard's venv.
+
+    Designed as the user-facing recovery action for the "I pulled new
+    code (or a new release shipped) but the hooks are still running
+    the previous version" case: a frozen ``pip install`` freezes the
+    source tree, so source-tree edits only reach the hooks once pip
+    is re-run. This function performs **only** the pip install step
+    that the full wizard performs — no prompts, no firmware copy, no
+    hook reinstall, no simulation. It is safe to call after
+    ``git pull`` or whenever you suspect the installed package has
+    drifted from the source.
+
+    The venv path and package spec resolve the same way they do in
+    :func:`build_setup_plan`: defaults come from :func:`default_venv_dir`
+    and :func:`default_package_spec`, both of which honor a detected
+    repository clone. When the spec is a local source tree the install
+    is editable (``pip install -e``); for the GitHub URL fallback it
+    is frozen.
+
+    Returns ``True`` on success, ``False`` when pip exits non-zero or
+    the venv's python cannot be found.
+    """
+    chosen_venv = (venv_dir or default_venv_dir()).expanduser().resolve()
+    venv_python = venv_python_path(chosen_venv)
+    if not venv_python.is_file():
+        print(
+            f"copilot-command-ring refresh: venv python not found at "
+            f"{venv_python}; run `copilot-command-ring setup-status-ring` first.",
+            file=sys.stderr,
+        )
+        return False
+
+    resolved_spec = package_spec if package_spec else default_package_spec()
+    args = _build_pip_install_args(venv_python, resolved_spec)
+    install_mode = "editable" if "-e" in args else "frozen"
+
+    _phase(
+        f"Refreshing copilot-command-ring ({install_mode}, spec={resolved_spec})"
+    )
+    run = runner if runner is not None else _run_checked
+    try:
+        run(args)
+    except subprocess.CalledProcessError as exc:
+        print(
+            f"copilot-command-ring refresh: pip install failed "
+            f"(exit={exc.returncode}).",
+            file=sys.stderr,
+        )
+        return False
+    print("Refresh complete.", file=sys.stderr)
+    return True
+
+
 def venv_python_path(venv_dir: Path, *, os_name: str | None = None) -> Path:
     """Return the Python executable path for *venv_dir*."""
     platform_name = os_name if os_name is not None else os.name
@@ -423,15 +550,7 @@ def build_setup_plan(
         ),
         install_command=CommandStep(
             "Install or upgrade copilot-command-ring",
-            (
-                str(venv_python),
-                "-m",
-                "pip",
-                "install",
-                "--quiet",
-                "--upgrade",
-                resolved_package_spec,
-            ),
+            _build_pip_install_args(venv_python, resolved_package_spec),
         ),
         hook_command=hook_command,
         validation_command=CommandStep(

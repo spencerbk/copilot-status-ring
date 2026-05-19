@@ -10,9 +10,14 @@ keeping the durable setup logic in the Python package.
    user-level venv at `~/.local/share/copilot-command-ring/.venv` /
    `%LOCALAPPDATA%\copilot-command-ring\.venv` if no clone is detected).
 2. Installs or upgrades `copilot-command-ring` into that environment from your
-   local clone path (no network needed). Falls back to
+   local clone path (no network needed). The wizard auto-detects local clones
+   and installs them **editable** (`pip install -e .`), so `git pull` is enough
+   to pick up host-side fixes — you do **not** need to re-run the wizard after
+   updating. Falls back to a frozen install from
    `git+https://github.com/spencerbk/copilot-status-ring.git` when no clone is
-   detected.
+   detected; users on that path should run `copilot-command-ring refresh` to
+   pick up upstream changes (see
+   [Recover from a stale install](troubleshooting.md#animations-look-wrong)).
 3. Asks whether hooks should be installed globally for all repos or deployed to
    one target repo.
 4. Prompts for the board, firmware runtime, NeoPixel data pin, and ring size

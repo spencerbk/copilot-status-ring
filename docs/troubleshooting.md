@@ -54,6 +54,7 @@ If you already know what is failing, start here:
 | The startup wipe never appears | [Ring doesn't light up](#ring-doesnt-light-up) |
 | The ring works at first, then freezes, goes dark, or stays on an old state | [Ring becomes unresponsive after long sessions](#ring-becomes-unresponsive-after-long-sessions) |
 | MicroPython CDC, `NEOPIXEL_PIN`, ESP32-C3/C6, or `mpremote` problems | [MicroPython-specific issues](#micropython-specific-issues) |
+| You pulled a host-side fix from `dev`/`main` but the ring still misbehaves | [Recover from a stale install](#animations-look-wrong) |
 | Permission denied opening a serial port | [Permission denied on serial port](#permission-denied-on-serial-port) |
 | Copilot CLI reports hook/control-output errors | [Hook causes Copilot errors](#hook-causes-copilot-errors) |
 | Multiple terminals or repositories are sharing one ring | [Multiple Copilot CLI sessions](#multiple-copilot-cli-sessions) |
@@ -417,6 +418,20 @@ The firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT`
 **The host keeps sending the wrong `pixel_count` even though you saved a new one in the wizard:**
 
 The host loads `.copilot-command-ring.local.json` by walking up from the current working directory and, if it finds nothing in that chain, falling back to `~/.copilot-command-ring.local.json` (where the wizard's "global" scope writes). A per-repo file always wins over the home-level one. If the wizard saved `pixel_count: 16` globally but your ring is still showing the 24-LED-default spinner pattern (segment shrinks at the end of a sweep, then grows back from zero), check whether a stale `<repo>/.copilot-command-ring.local.json` is shadowing the global file — these are `.gitignore`d, so a leftover from earlier experimentation is easy to miss. Either delete the per-repo file or update its `pixel_count` to match your ring.
+
+**Recover from a stale install (host fixes shipped but ring still misbehaves):**
+
+The wizard installs `copilot-command-ring` into `<repo>/.venv` via `pip install`. When the wizard installs from a **local clone**, the install is now editable, so a `git pull` updates `site-packages` automatically. When the wizard installed from the **`git+https://...` URL** (no clone detected, or an older install pre-dating the editable-install change), `site-packages` is a frozen snapshot — `git pull` will not reach it, and your hooks keep running the previous version of the host code.
+
+Symptom: a documented host-side fix shipped on `dev` / `main`, you pulled, but the ring still shows the prior buggy behaviour.
+
+Fix: run
+
+```powershell
+copilot-command-ring refresh
+```
+
+`refresh` re-runs only the wizard's pip install step (no prompts, no firmware writes, no hook redeployment). It uses the same auto-detection as the wizard: a local clone yields an editable reinstall; otherwise it upgrades the frozen install from the GitHub URL. The hooks pick up the new code on the next event because they import from `site-packages` each invocation.
 
 **Check data pin:**
 

@@ -7,6 +7,7 @@ Subcommands
 setup                 Install global hooks (all repos, one-time).
 deploy <target-dir>   Deploy hooks into a specific repository.
 hook <event_name>     Handle a Copilot CLI hook event (called by deployed wrappers).
+refresh               Re-run only the host pip install step (post git-pull / release upgrade).
 doctor                Run a one-shot health check (config, ports, lock, ping).
 """
 
@@ -70,6 +71,32 @@ def main(argv: list[str] | None = None) -> None:
         help="The Copilot CLI event name (e.g. sessionStart, preToolUse)",
     )
 
+    # ── refresh ────────────────────────────────────────────────────────
+    refresh_parser = sub.add_parser(
+        "refresh",
+        help=(
+            "Re-install / upgrade the host package into the wizard's venv. "
+            "Use after `git pull` or a release upgrade so the hooks pick up "
+            "the new code."
+        ),
+    )
+    refresh_parser.add_argument(
+        "--package-spec",
+        default=None,
+        help=(
+            "Override the pip install spec (default: local clone path if "
+            "detected, else the GitHub URL)."
+        ),
+    )
+    refresh_parser.add_argument(
+        "--venv-dir",
+        default=None,
+        help=(
+            "Override the target virtual environment directory "
+            "(default: <repo_root>/.venv when a clone is detected)."
+        ),
+    )
+
     # ── doctor ─────────────────────────────────────────────────────────
     doctor_parser = sub.add_parser(
         "doctor",
@@ -108,6 +135,15 @@ def main(argv: list[str] | None = None) -> None:
         from .hook_main import main as hook_main
 
         hook_main()
+
+    elif args.command == "refresh":
+        from pathlib import Path
+
+        from .setup_wizard import run_refresh
+
+        venv_dir = Path(args.venv_dir) if args.venv_dir else None
+        ok = run_refresh(venv_dir=venv_dir, package_spec=args.package_spec)
+        sys.exit(0 if ok else 1)
 
     elif args.command in {"setup-status-ring", "wizard"}:
         from .setup_wizard import run_setup_status_ring_from_args

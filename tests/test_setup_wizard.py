@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Sequence
 from io import StringIO
 from pathlib import Path
@@ -29,7 +30,9 @@ from copilot_command_ring.setup_wizard import (
     default_venv_dir,
     execute_setup_plan,
     find_repo_root,
+    is_local_path_spec,
     prompt_for_selections,
+    run_refresh,
     selections_from_json,
     venv_python_path,
 )
@@ -1236,3 +1239,220 @@ def test_list_serial_ports_returns_empty_when_enumeration_raises(
         fake_list_ports,
     )
     assert detect_ports.list_serial_ports() == []
+
+
+# ── Option 1: editable install for local clones (`pip install -e`) ────────
+
+
+def test_is_local_path_spec_recognizes_existing_directory(tmp_path: Path) -> None:
+    assert is_local_path_spec(str(tmp_path)) is True
+
+
+def test_is_local_path_spec_rejects_nonexistent_directory(tmp_path: Path) -> None:
+    missing = tmp_path / "does-not-exist"
+    assert is_local_path_spec(str(missing)) is False
+
+
+def test_is_local_path_spec_rejects_empty_string() -> None:
+    assert is_local_path_spec("") is False
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        "git+https://github.com/spencerbk/copilot-status-ring.git",
+        "https://example.com/pkg.tar.gz",
+        "http://example.com/pkg.tar.gz",
+        "file:///tmp/wheelhouse/pkg.whl",
+        "git+ssh://git@github.com/x/y.git",
+    ],
+)
+def test_is_local_path_spec_rejects_urls_and_vcs(spec: str) -> None:
+    assert is_local_path_spec(spec) is False
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        "copilot-command-ring==0.1.0",
+        "copilot-command-ring>=0.1",
+        "copilot-command-ring<=2.0",
+        "copilot-command-ring~=0.1",
+        "copilot-command-ring!=0.1.0",
+    ],
+)
+def test_is_local_path_spec_rejects_version_specifiers(spec: str) -> None:
+    assert is_local_path_spec(spec) is False
+
+
+def test_build_setup_plan_uses_editable_install_for_local_clone(
+    tmp_path: Path,
+) -> None:
+    """When the package spec is a real directory, ``-e`` is injected.
+
+    This is the high-leverage fix from the install-staleness spike: a
+    frozen ``pip install <path>`` snapshots the source tree, so a
+    later ``git pull`` does not reach the hooks. Editable installs
+    point ``site-packages`` at the live source so updates flow
+    automatically for contributors with a clone.
+    """
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+    )
+    plan = build_setup_plan(
+        selections, venv_dir=tmp_path / ".venv", package_spec=str(tmp_path),
+    )
+    command = plan.install_command.command
+    assert "-e" in command
+    # ``-e <path>`` ordering: the ``-e`` flag must immediately precede the spec
+    assert command[command.index("-e") + 1] == str(tmp_path)
+    # Last element is still the spec — preserves the contract of older tests.
+    assert command[-1] == str(tmp_path)
+
+
+def test_build_setup_plan_keeps_frozen_install_for_git_url(tmp_path: Path) -> None:
+    """The ``git+https://...`` fallback is frozen (no ``-e``).
+
+    Editable installs from a remote VCS URL require ``--src`` and a
+    side-checkout directory; supporting that adds complexity that
+    end users (who got us here precisely because they don't have a
+    clone) don't benefit from. The frozen-install upgrade path for
+    those users is the ``refresh`` subcommand.
+    """
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+    )
+    plan = build_setup_plan(
+        selections,
+        venv_dir=tmp_path / ".venv",
+        package_spec=PACKAGE_SPEC_DEFAULT,
+    )
+    command = plan.install_command.command
+    assert "-e" not in command
+    assert command[-1] == PACKAGE_SPEC_DEFAULT
+
+
+# ── Option 2: `copilot-command-ring refresh` ─────────────────────────────
+
+
+def _writable_venv_python(tmp_path: Path) -> Path:
+    """Create a fake venv python executable so ``run_refresh`` clears its
+    ``is_file()`` precondition.
+
+    The contents are irrelevant — ``run_refresh`` shells out via the
+    injected ``runner`` rather than actually invoking the file.
+    """
+    venv = tmp_path / ".venv"
+    scripts = venv / ("Scripts" if os.name == "nt" else "bin")
+    scripts.mkdir(parents=True)
+    python_name = "python.exe" if os.name == "nt" else "python"
+    python_path = scripts / python_name
+    python_path.write_text("# placeholder for tests\n", encoding="utf-8")
+    return venv
+
+
+def test_run_refresh_invokes_pip_install_editable_for_local_clone(
+    tmp_path: Path,
+) -> None:
+    """Local clone → ``pip install -e <repo_root>``."""
+    venv = _writable_venv_python(tmp_path)
+    captured: list[Sequence[str]] = []
+
+    def _capture(cmd: Sequence[str]) -> None:
+        captured.append(list(cmd))
+
+    ok = run_refresh(
+        venv_dir=venv,
+        package_spec=str(tmp_path),
+        runner=_capture,
+    )
+
+    assert ok is True
+    assert len(captured) == 1
+    cmd = captured[0]
+    assert cmd[1:5] == ["-m", "pip", "install", "--quiet"]
+    assert "--upgrade" in cmd
+    assert "-e" in cmd
+    assert cmd[-1] == str(tmp_path)
+
+
+def test_run_refresh_uses_frozen_install_for_git_url(tmp_path: Path) -> None:
+    venv = _writable_venv_python(tmp_path)
+    captured: list[Sequence[str]] = []
+
+    def _capture(cmd: Sequence[str]) -> None:
+        captured.append(list(cmd))
+
+    ok = run_refresh(
+        venv_dir=venv,
+        package_spec=PACKAGE_SPEC_DEFAULT,
+        runner=_capture,
+    )
+
+    assert ok is True
+    assert "-e" not in captured[0]
+    assert captured[0][-1] == PACKAGE_SPEC_DEFAULT
+
+
+def test_run_refresh_returns_false_when_venv_python_missing(
+    tmp_path: Path,
+) -> None:
+    """No venv → clear actionable error, no pip invocation."""
+    captured: list[Sequence[str]] = []
+
+    def _capture(cmd: Sequence[str]) -> None:
+        captured.append(list(cmd))
+
+    ok = run_refresh(
+        venv_dir=tmp_path / "missing-venv",
+        package_spec=str(tmp_path),
+        runner=_capture,
+    )
+
+    assert ok is False
+    assert captured == []
+
+
+def test_run_refresh_returns_false_when_pip_fails(tmp_path: Path) -> None:
+    """Pip non-zero exit propagates as ``False`` for shell-status callers."""
+    import subprocess as _subprocess
+
+    venv = _writable_venv_python(tmp_path)
+
+    def _boom(cmd: Sequence[str]) -> None:
+        raise _subprocess.CalledProcessError(returncode=1, cmd=list(cmd))
+
+    ok = run_refresh(
+        venv_dir=venv,
+        package_spec=str(tmp_path),
+        runner=_boom,
+    )
+
+    assert ok is False
+
+
+def test_run_refresh_falls_back_to_defaults_when_args_omitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No explicit args → uses ``default_venv_dir`` + ``default_package_spec``."""
+    venv = _writable_venv_python(tmp_path)
+    monkeypatch.setattr(
+        "copilot_command_ring.setup_wizard.default_venv_dir",
+        lambda: venv,
+    )
+    monkeypatch.setattr(
+        "copilot_command_ring.setup_wizard.default_package_spec",
+        lambda: str(tmp_path),
+    )
+    captured: list[Sequence[str]] = []
+    ok = run_refresh(runner=lambda cmd: captured.append(list(cmd)))
+    assert ok is True
+    assert captured[0][-1] == str(tmp_path)
+
+

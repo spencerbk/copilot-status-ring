@@ -145,3 +145,53 @@ class TestCLIDoctor:
             main(["doctor"])
         assert exc_info.value.code == 1
         mock_run.assert_called_once()
+
+
+class TestCLIRefresh:
+    """The ``refresh`` subcommand delegates to setup_wizard.run_refresh.
+
+    ``refresh`` is the user-facing recovery for the install-staleness
+    trap: a frozen ``pip install`` snapshots the source, so hooks keep
+    running the previous version after ``git pull``. ``refresh`` reruns
+    only the pip-install step (no prompts, no firmware, no hooks).
+    """
+
+    @patch("copilot_command_ring.setup_wizard.run_refresh", return_value=True)
+    def test_refresh_default_uses_resolved_defaults(
+        self, mock_refresh: MagicMock,
+    ) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["refresh"])
+        assert exc_info.value.code == 0
+        mock_refresh.assert_called_once_with(venv_dir=None, package_spec=None)
+
+    @patch("copilot_command_ring.setup_wizard.run_refresh", return_value=True)
+    def test_refresh_package_spec_passthrough(
+        self, mock_refresh: MagicMock,
+    ) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["refresh", "--package-spec", "/tmp/clone"])
+        assert exc_info.value.code == 0
+        mock_refresh.assert_called_once_with(
+            venv_dir=None, package_spec="/tmp/clone",
+        )
+
+    @patch("copilot_command_ring.setup_wizard.run_refresh", return_value=True)
+    def test_refresh_venv_dir_passthrough(self, mock_refresh: MagicMock) -> None:
+        from pathlib import Path
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(["refresh", "--venv-dir", "/tmp/myvenv"])
+        assert exc_info.value.code == 0
+        call_kwargs = mock_refresh.call_args.kwargs
+        assert call_kwargs["venv_dir"] == Path("/tmp/myvenv")
+        assert call_kwargs["package_spec"] is None
+
+    @patch("copilot_command_ring.setup_wizard.run_refresh", return_value=False)
+    def test_refresh_propagates_failure_exit_code(
+        self, mock_refresh: MagicMock,
+    ) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["refresh"])
+        assert exc_info.value.code == 1
+        mock_refresh.assert_called_once()
