@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "Notification",
+  "session_id": "abc123-def456",
+  "timestamp": "2024-01-07T08:00:08Z",
+  "cwd": "/path/to/project",
+  "message": "Choose an option",
+  "title": "Pick one",
+  "notification_type": "elicitation_dialog"
+}

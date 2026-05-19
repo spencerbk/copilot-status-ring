@@ -226,9 +226,11 @@ def test_invalid_env_brightness_is_ignored(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "many"])
-def test_invalid_env_pixel_count_is_ignored(value: str, tmp_path, monkeypatch):
+def test_invalid_env_pixel_count_is_ignored(
+    value: str, hermetic_config_search, monkeypatch
+):
     monkeypatch.setenv(ENV_PIXEL_COUNT, value)
-    cfg = load_config(config_dir=tmp_path)
+    cfg = load_config(config_dir=hermetic_config_search)
     assert cfg.pixel_count == DEFAULT_PIXEL_COUNT
 
 
@@ -262,12 +264,12 @@ def test_negative_env_lock_timeout_is_ignored(tmp_path, monkeypatch):
 # ── Missing config file handled gracefully ────────────────────────────────
 
 
-def test_missing_config_file_returns_defaults(tmp_path, monkeypatch):
+def test_missing_config_file_returns_defaults(hermetic_config_search, monkeypatch):
     monkeypatch.delenv(ENV_PORT, raising=False)
     monkeypatch.delenv(ENV_BAUD, raising=False)
     monkeypatch.delenv(ENV_BRIGHTNESS, raising=False)
     monkeypatch.delenv(ENV_DRY_RUN, raising=False)
-    cfg = load_config(config_dir=tmp_path)
+    cfg = load_config(config_dir=hermetic_config_search)
     assert cfg.baud == DEFAULT_BAUD
     assert cfg.serial_port is None
 

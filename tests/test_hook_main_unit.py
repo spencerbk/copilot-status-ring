@@ -12,14 +12,96 @@ from copilot_command_ring.hook_main import main
 
 
 class TestHookMainMissingArgs:
-    """Missing event name argument should exit with code 1."""
+    """Missing event name and no ``hook_event_name`` in payload should exit 1."""
 
-    def test_exits_with_code_1(self) -> None:
+    def test_exits_with_code_1_when_argv_and_payload_both_missing(self) -> None:
         with (
             patch("sys.argv", ["hook_main"]),
+            patch("sys.stdin", io.StringIO("{}")),
             pytest.raises(SystemExit, match="1"),
         ):
             main()
+
+    def test_exits_with_code_1_when_argv_missing_and_payload_invalid(self) -> None:
+        with (
+            patch("sys.argv", ["hook_main"]),
+            patch("sys.stdin", io.StringIO("{not valid json")),
+            pytest.raises(SystemExit, match="1"),
+        ):
+            main()
+
+    def test_exits_with_code_1_when_argv_empty_and_payload_event_blank(self) -> None:
+        with (
+            patch("sys.argv", ["hook_main", ""]),
+            patch("sys.stdin", io.StringIO('{"hook_event_name": ""}')),
+            pytest.raises(SystemExit, match="1"),
+        ):
+            main()
+
+
+class TestHookMainPayloadEventFallback:
+    """VS Code-compatible configs supply the event name in the stdin payload.
+
+    Cross-tool configurations (e.g. ``.claude/settings.json``) may invoke
+    the wrapper without an argv event name and rely on the documented
+    ``hook_event_name`` field in every VS Code-compatible payload.
+    """
+
+    def test_payload_hook_event_name_used_when_argv_missing(self) -> None:
+        mock_send = MagicMock(return_value=True)
+        payload = '{"hook_event_name": "SessionStart", "session_id": "abc"}'
+        with (
+            patch("sys.argv", ["hook_main"]),
+            patch("sys.stdin", io.StringIO(payload)),
+            patch("copilot_command_ring.hook_main.send_event", mock_send),
+            patch("copilot_command_ring.hook_main.load_config"),
+            pytest.raises(SystemExit, match="0"),
+        ):
+            main()
+
+        mock_send.assert_called_once()
+        msg = mock_send.call_args[0][1]
+        # PascalCase alias resolves to the canonical state; original name
+        # preserved on the wire.
+        assert msg["event"] == "SessionStart"
+        assert msg["state"] == "session_start"
+        assert msg["session"] == "abc"
+
+    def test_argv_event_takes_precedence_over_payload_event(self) -> None:
+        """If both are supplied, argv wins — argv is how Copilot CLI invokes us."""
+        mock_send = MagicMock(return_value=True)
+        payload = '{"hook_event_name": "PreToolUse", "tool_name": "bash"}'
+        with (
+            patch("sys.argv", ["hook_main", "sessionStart"]),
+            patch("sys.stdin", io.StringIO(payload)),
+            patch("copilot_command_ring.hook_main.send_event", mock_send),
+            patch("copilot_command_ring.hook_main.load_config"),
+            pytest.raises(SystemExit, match="0"),
+        ):
+            main()
+
+        msg = mock_send.call_args[0][1]
+        assert msg["event"] == "sessionStart"
+
+    def test_vscode_pretooluse_payload_routes_without_argv(self) -> None:
+        mock_send = MagicMock(return_value=True)
+        payload = (
+            '{"hook_event_name": "PreToolUse", "tool_name": "bash", '
+            '"tool_input": {"cmd": "ls"}}'
+        )
+        with (
+            patch("sys.argv", ["hook_main"]),
+            patch("sys.stdin", io.StringIO(payload)),
+            patch("copilot_command_ring.hook_main.send_event", mock_send),
+            patch("copilot_command_ring.hook_main.load_config"),
+            pytest.raises(SystemExit, match="0"),
+        ):
+            main()
+
+        msg = mock_send.call_args[0][1]
+        assert msg["event"] == "PreToolUse"
+        assert msg["state"] == "working"
+        assert msg["tool"] == "bash"
 
 
 class TestHookMainValidEvent:

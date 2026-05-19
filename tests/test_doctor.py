@@ -358,10 +358,10 @@ class TestConfigReporting:
 class TestLoadConfigWithMetadata:
     """The new public API used by doctor."""
 
-    def test_no_file_returns_none_path(self, tmp_path: Path) -> None:
+    def test_no_file_returns_none_path(self, hermetic_config_search: Path) -> None:
         from copilot_command_ring.config import load_config_with_metadata
 
-        cfg, meta = load_config_with_metadata(tmp_path)
+        cfg, meta = load_config_with_metadata(hermetic_config_search)
         assert meta.config_path is None
         assert meta.parse_error is None
         assert cfg.serial_port is None

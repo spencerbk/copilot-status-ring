@@ -1,0 +1,10 @@
+{
+  "hook_event_name": "SubagentStop",
+  "session_id": "abc123-def456",
+  "timestamp": "2024-01-07T08:00:05Z",
+  "cwd": "/path/to/project",
+  "transcript_path": "/tmp/subagent.jsonl",
+  "agent_name": "reviewer",
+  "agent_display_name": "Code Reviewer",
+  "stop_reason": "end_turn"
+}

@@ -43,6 +43,46 @@ EVENT_STATE_MAP: Final[dict[str, str]] = {
 }
 
 # ---------------------------------------------------------------------------
+# VS Code-compatible (PascalCase) event aliases.
+#
+# Per docs.github.com/en/copilot/reference/hooks-reference, hook configuration
+# accepts two equivalent naming conventions:
+#   - camelCase event names + camelCase payload fields (our deploy format)
+#   - PascalCase event names + snake_case payload fields (VS Code-compatible;
+#     used by cross-tool .claude/settings.json files the runtime also reads)
+#
+# When the runtime invokes our wrapper via a PascalCase event name, we map
+# it back to the canonical camelCase form so EVENT_STATE_MAP works regardless
+# of how the hook was registered.  Two events have **no** documented
+# PascalCase alias and are intentionally absent here:
+#   - subagentStart  (no alias documented)
+#   - permissionRequest  (no alias documented)
+#
+# Note one irregularity: ``agentStop``'s alias is ``Stop`` (not ``AgentStop``).
+# ---------------------------------------------------------------------------
+EVENT_NAME_ALIASES: Final[dict[str, str]] = {
+    "SessionStart": "sessionStart",
+    "SessionEnd": "sessionEnd",
+    "UserPromptSubmit": "userPromptSubmitted",
+    "PreToolUse": "preToolUse",
+    "PostToolUse": "postToolUse",
+    "PostToolUseFailure": "postToolUseFailure",
+    "Stop": "agentStop",
+    "SubagentStop": "subagentStop",
+    "ErrorOccurred": "errorOccurred",
+    "PreCompact": "preCompact",
+    "Notification": "notification",
+}
+
+# ---------------------------------------------------------------------------
+# Maximum character length for individually extracted free-text payload
+# fields (tool args, stack traces, custom instructions, etc.) before they
+# are truncated to keep the serial wire small.  Bounded sub-KB messages
+# avoid straining the firmware JSON parser.
+# ---------------------------------------------------------------------------
+MAX_EXTRACTED_FIELD_CHARS: Final[int] = 200
+
+# ---------------------------------------------------------------------------
 # Default values
 # ---------------------------------------------------------------------------
 DEFAULT_BAUD: Final[int] = 115200

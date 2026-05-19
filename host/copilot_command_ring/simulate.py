@@ -27,7 +27,7 @@ DEFAULT_SEQUENCE: list[tuple[str, dict[str, object]]] = [
     ("preToolUse", {"toolName": "ask_user"}),
     ("postToolUse", {"toolName": "ask_user", "toolResult": {"resultType": "success"}}),
     ("subagentStart", {"agentName": "reviewer"}),
-    ("subagentStop", {"agentName": "reviewer"}),
+    ("subagentStop", {"agentName": "reviewer", "stopReason": "end_turn"}),
     ("preCompact", {"trigger": "auto"}),
     (
         "errorOccurred",

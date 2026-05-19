@@ -1,5 +1,7 @@
 {
   "agentName": "code-review",
   "agentId": "agent_001",
-  "exitCode": 0
+  "exitCode": 0,
+  "stopReason": "end_turn",
+  "transcriptPath": "/tmp/subagent-x.jsonl"
 }
