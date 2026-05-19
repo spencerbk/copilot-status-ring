@@ -38,9 +38,9 @@ SERIAL_BUF_MAX = 512  # discard buffer if no newline within this many bytes
 SERIAL_READ_CHUNK = 256  # max bytes to drain per loop without blocking animation
 WATCHDOG_TIMEOUT_MS = 8000  # keep longer than normal render loop latency
 MAX_CONSECUTIVE_ERRORS = 10  # force reload after this many consecutive loop failures
-SERIAL_SILENCE_TIMEOUT_S = 600  # seconds of zero received bytes → reset when sessions active
+SERIAL_SILENCE_TIMEOUT_S = 1500  # seconds of zero received bytes → reset when sessions active (must be ≥ STALE_TIMEOUT_S so pruning happens before USB recovery)
 DEFAULT_IDLE_MODE = "breathing"  # used when no message has set one yet
-STALE_TIMEOUT_S = 300  # seconds before an idle session is pruned
+STALE_TIMEOUT_S = 1200  # seconds before an idle session is pruned (20 min — long enough for normal user read+type gaps)
 MAX_RUNTIME_PIXELS = 512  # guard against oversized host config on tiny boards
 
 # ── Time helpers (wraparound-safe) ─────────────────────────────────────────

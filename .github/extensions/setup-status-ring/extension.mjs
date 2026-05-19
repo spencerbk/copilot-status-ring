@@ -263,6 +263,30 @@ async function collectSelections(session) {
         pixelCount = pixelOptions.find((option) => option.label === pixelLabel).value;
     }
 
+    const idleOptions = [
+        {
+            label: "Breathing — stay dim when idle (recommended)",
+            value: "breathing",
+        },
+        { label: "Off — go dark when all sessions end", value: "off" },
+    ];
+    const idleLabel = await session.ui.select(
+        "How should the ring look when Copilot is idle?",
+        idleOptions.map((option) => option.label),
+    );
+    let idleMode;
+    if (!idleLabel) {
+        // Mirror the ring-size fail-open: dismissed dialogs fall back to the
+        // safer default (breathing) so users who hit Esc don't accidentally
+        // pick "off" and then wonder why their ring goes dark.
+        idleMode = "breathing";
+        await session.log(
+            'Idle mode defaulted to "breathing" (ring stays dim when idle).',
+        );
+    } else {
+        idleMode = idleOptions.find((option) => option.label === idleLabel).value;
+    }
+
     const autoDetectPort = await session.ui.confirm(
         "Attempt host USB serial auto-detection before setup?",
     );
@@ -311,6 +335,7 @@ async function collectSelections(session) {
         force_hooks: true,
         pixel_count: pixelCount,
         serial_port: serialPort,
+        idle_mode: idleMode,
     };
 }
 

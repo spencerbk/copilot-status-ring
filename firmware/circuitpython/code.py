@@ -40,7 +40,7 @@ LOOP_DELAY = 0.02  # ~50 fps
 SERIAL_BUF_MAX = 512  # discard buffer if no newline within this many bytes
 WATCHDOG_TIMEOUT = 8  # keep longer than normal render loop latency
 MAX_CONSECUTIVE_ERRORS = 10  # force reload after this many consecutive loop failures
-SERIAL_SILENCE_TIMEOUT = 600  # seconds of zero received bytes → reload when sessions active
+SERIAL_SILENCE_TIMEOUT = 1500  # seconds of zero received bytes → reload when sessions active (must be ≥ STALE_TIMEOUT so pruning happens before USB recovery)
 DEFAULT_IDLE_MODE = "breathing"  # used when no message has set one yet
 MAX_RUNTIME_PIXELS = 512  # guard against oversized host config on tiny boards
 
@@ -167,7 +167,7 @@ STATE_PRIORITY = {
     "error": 10,
 }
 MAX_SESSIONS = 8
-STALE_TIMEOUT = 300  # seconds before an idle session is pruned
+STALE_TIMEOUT = 1200  # seconds before an idle session is pruned (20 min — long enough for normal user read+type gaps)
 
 
 def should_apply_transient(persistent_state, transient):

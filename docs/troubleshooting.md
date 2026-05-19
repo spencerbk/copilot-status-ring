@@ -53,6 +53,7 @@ If you already know what is failing, start here:
 | Copilot CLI runs, but the ring never changes | [Hooks not firing](#hooks-not-firing), then [Ring doesn't light up](#ring-doesnt-light-up) |
 | The startup wipe never appears | [Ring doesn't light up](#ring-doesnt-light-up) |
 | The ring works at first, then freezes, goes dark, or stays on an old state | [Ring becomes unresponsive after long sessions](#ring-becomes-unresponsive-after-long-sessions) |
+| The ring goes dark while you are still chatting in another terminal | [Ring goes dark unexpectedly during active sessions](#ring-goes-dark-unexpectedly-during-active-sessions) |
 | MicroPython CDC, `NEOPIXEL_PIN`, ESP32-C3/C6, or `mpremote` problems | [MicroPython-specific issues](#micropython-specific-issues) |
 | You pulled a host-side fix from `dev`/`main` but the ring still misbehaves | [Recover from a stale install](#animations-look-wrong) |
 | Permission denied opening a serial port | [Permission denied on serial port](#permission-denied-on-serial-port) |
@@ -328,7 +329,7 @@ Recent firmware variants include several safeguards for long-running sessions:
 
 - `sessionEnd` and stale-session pruning fall back to a dim breathing animation instead of going dark. The ring only turns fully off when the host config sets `idle_mode` to `"off"`.
 - Per-state TTL decay: a crashed session stuck on `working` or `awaiting_permission` automatically decays to `agent_idle` after a few minutes, even if no further messages arrive.
-- Serial-silence watchdog: if active sessions exist but the firmware receives zero bytes for 10 minutes, it reloads to recover from a wedged USB CDC channel (common on Windows with USB selective suspend).
+- Serial-silence watchdog: if active sessions exist but the firmware receives zero bytes for 25 minutes, it reloads to recover from a wedged USB CDC channel (common on Windows with USB selective suspend). The watchdog is sized larger than the 20-minute stale-prune so pruning happens first whenever a session quietly stops sending.
 - A capped byte buffer so malformed or partial serial data without a newline cannot grow forever in RAM.
 - Draining all queued JSON lines each loop so valid traffic cannot backlog indefinitely in memory.
 - Reading buffered serial data regardless of USB connection state so messages are never lost between rapid hook invocations.
@@ -402,6 +403,28 @@ The host bridge now surfaces a one-shot stderr `WARNING` after three consecutive
 ```
 
 If you see this, run a Copilot CLI session with `COPILOT_RING_LOG_LEVEL=DEBUG` to see the full error (port not detected, lock timeout, `SerialException`, etc.). The warning fires once per streak; a successful send resets the counter.
+
+---
+
+## Ring goes dark unexpectedly during active sessions
+
+If the ring breathes for a while and then falls fully dark even though you are still chatting in one or more Copilot CLI terminals, the host config has `"idle_mode": "off"` somewhere in the precedence chain.
+
+Older versions of this README told users to hand-create `<repo>/.copilot-command-ring.local.json` with `"idle_mode": "off"`. The current wizard prompts for idle mode and writes the file for you; leftover copies of the old hand-written file shadow the wizard's global save.
+
+**Fix:**
+
+1. Run `/setup-status-ring` and pick **Breathing — ring stays dim when idle (recommended)** at the new prompt. The wizard saves your choice to `~/.copilot-command-ring.local.json` (global scope) or `<repo>/.copilot-command-ring.local.json` (per-repo scope, when you launch the wizard from inside the repo).
+2. If the wizard prints a `Warning: ... shadows the global save` line, that's a stale per-repo file from before idle mode was a wizard prompt. Either delete it or change its `idle_mode` to `breathing`.
+3. Re-run the wizard or restart the affected Copilot CLI processes so the host bridge reloads its config.
+
+You can confirm what the host actually loaded:
+
+```powershell
+copilot-command-ring doctor
+```
+
+The `Config loaded from` line points at the winning file, and the printed config includes the resolved `idle_mode`.
 
 ---
 
@@ -575,7 +598,7 @@ The host bridge tags every serial message with a session identifier. Current Cop
 - ✅ The ring displays the most "interesting" state across all active sessions — for example, if one session is working and another is idle, the ring shows the working spinner.
 - ✅ When a session ends, the ring seamlessly continues showing the remaining sessions' state instead of going dark.
 - ⚠️ The ring cannot display two sessions simultaneously as separate animations — it shows the single highest-priority state.
-- ⚠️ If a Copilot CLI crashes without sending `sessionEnd`, the firmware prunes the stale session after 5 minutes. Once all sessions are pruned — or when a session ends explicitly with `sessionEnd` — the ring shows a dim breathing animation (`agent_idle`) indefinitely so it is never dark by surprise. The next Copilot session lights it back up instantly. To revert to the pre-v1.2 behavior where `sessionEnd` turns the ring fully dark, set `"idle_mode": "off"` in `.copilot-command-ring.local.json`. Power-cycling is no longer required for recovery.
+- ⚠️ If a Copilot CLI crashes without sending `sessionEnd`, the firmware prunes the stale session after 20 minutes. Once all sessions are pruned — or when a session ends explicitly with `sessionEnd` — the ring shows a dim breathing animation (`agent_idle`) indefinitely so it is never dark by surprise. The next Copilot session lights it back up instantly. To revert to the pre-v1.2 behavior where `sessionEnd` turns the ring fully dark, re-run `/setup-status-ring` and pick **Off** at the "How should the ring look when Copilot is idle?" prompt. Power-cycling is no longer required for recovery.
 
 **If the ring seems stuck or unresponsive during multi-session use:**
 

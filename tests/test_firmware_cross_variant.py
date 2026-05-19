@@ -306,7 +306,9 @@ class TestArduinoFeatureParity:
         assert "STALE_TIMEOUT_MS" in src, "Arduino must define STALE_TIMEOUT_MS"
         match = re.search(r"STALE_TIMEOUT_MS\s+(\d+)", src)
         assert match, "STALE_TIMEOUT_MS not parseable"
-        assert int(match.group(1)) == 300000, "STALE_TIMEOUT_MS must be 300000 (300s)"
+        assert int(match.group(1)) == 1200000, (
+            "STALE_TIMEOUT_MS must be 1200000 (1200s / 20 min)"
+        )
 
     def test_arduino_has_max_sessions(self) -> None:
         src = _read_arduino_sources()
@@ -349,12 +351,95 @@ class TestArduinoFeatureParity:
         assert "SERIAL_SILENCE_MS" in src, "Arduino must define SERIAL_SILENCE_MS"
         match = re.search(r"SERIAL_SILENCE_MS\s+(\d+)", src)
         assert match, "SERIAL_SILENCE_MS not parseable"
-        assert int(match.group(1)) == 600000, "SERIAL_SILENCE_MS must be 600000 (600s)"
+        assert int(match.group(1)) == 1500000, (
+            "SERIAL_SILENCE_MS must be 1500000 (1500s / 25 min) and ≥ STALE_TIMEOUT_MS"
+        )
 
     def test_arduino_has_error_recovery(self) -> None:
         src = _read_arduino_sources()
         assert "consecutiveErrors" in src, "Arduino must track consecutive errors"
         assert "MAX_CONSEC_ERRORS" in src, "Arduino must define MAX_CONSEC_ERRORS"
+
+
+# ── Timeout invariants ───────────────────────────────────────────────────
+
+
+class TestTimeoutInvariants:
+    """Cross-variant invariants for STALE_TIMEOUT and SERIAL_SILENCE_TIMEOUT.
+
+    The serial-silence watchdog must be ≥ the stale-prune timeout in every
+    firmware variant. Otherwise the USB reload fires before stale pruning
+    can run, which clears in-memory tracker state and effectively shortens
+    the stale window to ``SERIAL_SILENCE``. See Phase 6 / "ring goes dark"
+    investigation for the failure mode.
+    """
+
+    def test_circuitpython_silence_geq_stale(self) -> None:
+        src = CP_CODE.read_text(encoding="utf-8")
+        silence_match = re.search(r"^SERIAL_SILENCE_TIMEOUT\s*=\s*(\d+)", src, re.M)
+        stale_match = re.search(r"^STALE_TIMEOUT\s*=\s*(\d+)", src, re.M)
+        assert silence_match, "CP must declare SERIAL_SILENCE_TIMEOUT at module scope"
+        assert stale_match, "CP must declare STALE_TIMEOUT at module scope"
+        silence_s = int(silence_match.group(1))
+        stale_s = int(stale_match.group(1))
+        assert silence_s >= stale_s, (
+            f"CP SERIAL_SILENCE_TIMEOUT ({silence_s}s) must be ≥ STALE_TIMEOUT ({stale_s}s); "
+            "otherwise USB reload fires before stale pruning, defeating the prune timeout."
+        )
+
+    def test_micropython_silence_geq_stale(self) -> None:
+        src = MP_CODE.read_text(encoding="utf-8")
+        silence_match = re.search(r"^SERIAL_SILENCE_TIMEOUT_S\s*=\s*(\d+)", src, re.M)
+        stale_match = re.search(r"^STALE_TIMEOUT_S\s*=\s*(\d+)", src, re.M)
+        assert silence_match, "MP must declare SERIAL_SILENCE_TIMEOUT_S at module scope"
+        assert stale_match, "MP must declare STALE_TIMEOUT_S at module scope"
+        silence_s = int(silence_match.group(1))
+        stale_s = int(stale_match.group(1))
+        assert silence_s >= stale_s, (
+            f"MP SERIAL_SILENCE_TIMEOUT_S ({silence_s}s) must be ≥ STALE_TIMEOUT_S ({stale_s}s); "
+            "otherwise soft_reset fires before stale pruning, defeating the prune timeout."
+        )
+
+    def test_arduino_silence_geq_stale(self) -> None:
+        src = _read_arduino_sources()
+        silence_match = re.search(r"SERIAL_SILENCE_MS\s+(\d+)", src)
+        stale_match = re.search(r"STALE_TIMEOUT_MS\s+(\d+)", src)
+        assert silence_match, "Arduino must define SERIAL_SILENCE_MS"
+        assert stale_match, "Arduino must define STALE_TIMEOUT_MS"
+        silence_ms = int(silence_match.group(1))
+        stale_ms = int(stale_match.group(1))
+        assert silence_ms >= stale_ms, (
+            f"Arduino SERIAL_SILENCE_MS ({silence_ms}ms) "
+            f"must be ≥ STALE_TIMEOUT_MS ({stale_ms}ms); "
+            "otherwise softReset fires before stale pruning, "
+            "defeating the prune timeout."
+        )
+
+    def test_all_variants_have_same_stale_timeout_in_seconds(self) -> None:
+        cp_src = CP_CODE.read_text(encoding="utf-8")
+        mp_src = MP_CODE.read_text(encoding="utf-8")
+        arduino_src = _read_arduino_sources()
+        cp_s = int(re.search(r"^STALE_TIMEOUT\s*=\s*(\d+)", cp_src, re.M).group(1))
+        mp_s = int(re.search(r"^STALE_TIMEOUT_S\s*=\s*(\d+)", mp_src, re.M).group(1))
+        arduino_ms = int(re.search(r"STALE_TIMEOUT_MS\s+(\d+)", arduino_src).group(1))
+        assert cp_s == mp_s == arduino_ms // 1000, (
+            f"STALE_TIMEOUT drift: CP={cp_s}s MP={mp_s}s Arduino={arduino_ms // 1000}s"
+        )
+
+    def test_all_variants_have_same_serial_silence_in_seconds(self) -> None:
+        cp_src = CP_CODE.read_text(encoding="utf-8")
+        mp_src = MP_CODE.read_text(encoding="utf-8")
+        arduino_src = _read_arduino_sources()
+        cp_s = int(
+            re.search(r"^SERIAL_SILENCE_TIMEOUT\s*=\s*(\d+)", cp_src, re.M).group(1)
+        )
+        mp_s = int(
+            re.search(r"^SERIAL_SILENCE_TIMEOUT_S\s*=\s*(\d+)", mp_src, re.M).group(1)
+        )
+        arduino_ms = int(re.search(r"SERIAL_SILENCE_MS\s+(\d+)", arduino_src).group(1))
+        assert cp_s == mp_s == arduino_ms // 1000, (
+            f"SERIAL_SILENCE drift: CP={cp_s}s MP={mp_s}s Arduino={arduino_ms // 1000}s"
+        )
 
 
 # ── Spinner auto-scale parity ─────────────────────────────────────────────

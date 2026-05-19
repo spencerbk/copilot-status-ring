@@ -261,7 +261,7 @@ Most users can start with no configuration file. Add only the fields you need:
 
 ### Config File
 
-Create `.copilot-command-ring.local.json` in the repo root (git-ignored):
+The `setup-status-ring` wizard writes your hardware choices to a JSON config file for you (`~/.copilot-command-ring.local.json` for global setup, `<repo>/.copilot-command-ring.local.json` for per-repo setup). The remaining JSON fields are loaded by the host on every event, so you can hand-edit the file if you need to tune `baud`, `brightness`, `device_match`, or `lock_timeout`.
 
 ```json
 {
@@ -276,9 +276,9 @@ Create `.copilot-command-ring.local.json` in the repo root (git-ignored):
 }
 ```
 
-The serial port is auto-detected by default. Add `"serial_port": "COM7"` only if auto-detection doesn't find your board.
+`pixel_count` and `idle_mode` are both surfaced as prompts in `/setup-status-ring`. The serial port is auto-detected by default — add `"serial_port": "COM7"` only if auto-detection fails or you want a fixed override. Auto-detection compares each serial device description against `device_match.description_contains` using case-insensitive substring matches, then prefers the highest USB interface number when multiple matching ports share a VID/PID.
 
-Auto-detection compares each serial device description against `device_match.description_contains` using case-insensitive substring matches, then prefers the highest USB interface number when multiple matching ports share a VID/PID. Narrow `description_contains` when another serial device is selected; use `serial_port` when you want a fixed override.
+**Scope precedence.** When the host loads its config, it walks the current working directory and its parents looking for `.copilot-command-ring.local.json`, then falls back to `~/.copilot-command-ring.local.json`. A repo-local file therefore overrides the global save for any process running inside that repo — useful for per-project overrides, but it can also quietly shadow the global wizard save if a stale file is left behind. The wizard prints a `Warning:` line at the end of `setup-status-ring` when it detects this case; delete or update the shadowing file to restore global settings.
 
 `idle_mode` controls what the ring does when every Copilot session has ended or gone silent:
 
@@ -404,7 +404,7 @@ Quick checks:
 - **Ring not responding?** Verify the serial port with `COPILOT_RING_LOG_LEVEL=DEBUG` and check the connection.
 - **No hooks firing?** On macOS/Linux, run `./install.sh` from a local clone. For manual installs, run `copilot-command-ring setup` (global) or `copilot-command-ring deploy <path>` (per-repo). See [Quick Start](#quick-start) step 3.
 - **Permission errors?** Linux: add your user to the `dialout` group. macOS: check `/dev/tty.*` permissions.
-- **Multiple sessions?** Fully supported across all three firmware variants. The ring shows the highest-priority state across all active sessions. Stale sessions are pruned after 5 minutes.
+- **Multiple sessions?** Fully supported across all three firmware variants. The ring shows the highest-priority state across all active sessions. Stale sessions are pruned after 20 minutes.
 
 See also: [`docs/setup-windows.md`](docs/setup-windows.md) · [`docs/setup-macos.md`](docs/setup-macos.md) · [`docs/setup-linux.md`](docs/setup-linux.md)
 

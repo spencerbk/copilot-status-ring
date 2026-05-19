@@ -13,7 +13,11 @@ from unittest.mock import patch
 
 import pytest
 from copilot_command_ring.boards import RUNTIME_CIRCUITPYTHON, RUNTIME_MICROPYTHON
-from copilot_command_ring.constants import CONFIG_FILE_NAME, DEFAULT_PIXEL_COUNT
+from copilot_command_ring.constants import (
+    CONFIG_FILE_NAME,
+    DEFAULT_IDLE_MODE,
+    DEFAULT_PIXEL_COUNT,
+)
 from copilot_command_ring.firmware_install import FirmwareInstallError, PreparedFirmware
 from copilot_command_ring.setup_wizard import (
     PACKAGE_SPEC_DEFAULT,
@@ -23,6 +27,7 @@ from copilot_command_ring.setup_wizard import (
     SetupWizardError,
     WizardSelections,
     _format_summary,
+    _shadow_warning_for,
     _write_local_config,
     build_setup_plan,
     default_package_spec,
@@ -472,8 +477,9 @@ def test_prompt_for_selections_captures_ring_size(monkeypatch: pytest.MonkeyPatc
     #   <enter>      → runtime: default
     #   <enter>      → data pin: default
     #   2\n          → ring size: 16
+    #   <enter>      → idle mode: default (breathing)
     #   n\n          → auto-detect serial: no
-    stdin = StringIO("1\n1\n\n\n2\nn\n")
+    stdin = StringIO("1\n1\n\n\n2\n\nn\n")
     monkeypatch.setattr("sys.stdin", stdin)
     selections = prompt_for_selections()
     assert selections.pixel_count == 16
@@ -481,16 +487,40 @@ def test_prompt_for_selections_captures_ring_size(monkeypatch: pytest.MonkeyPatc
 
 def test_prompt_for_selections_default_ring_size_is_24(monkeypatch: pytest.MonkeyPatch) -> None:
     # Same as above but accept the default for the ring-size prompt.
-    stdin = StringIO("1\n1\n\n\n\nn\n")
+    stdin = StringIO("1\n1\n\n\n\n\nn\n")
     monkeypatch.setattr("sys.stdin", stdin)
     selections = prompt_for_selections()
     assert selections.pixel_count == DEFAULT_PIXEL_COUNT
 
 
+def test_prompt_for_selections_default_idle_mode_is_breathing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Accepting the default for the new idle-mode prompt yields breathing."""
+    stdin = StringIO("1\n1\n\n\n\n\nn\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    selections = prompt_for_selections()
+    assert selections.idle_mode == DEFAULT_IDLE_MODE
+
+
+def test_prompt_for_selections_picks_idle_mode_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Selecting option 2 at the idle-mode prompt picks ``"off"``."""
+    stdin = StringIO("1\n1\n\n\n\n2\nn\n")
+    monkeypatch.setattr("sys.stdin", stdin)
+    selections = prompt_for_selections()
+    assert selections.idle_mode == "off"
+
+
 # ── Ring size: local-config writer behavior ───────────────────────────────
 
 
-def _selections_global(pixel_count: int = DEFAULT_PIXEL_COUNT) -> WizardSelections:
+def _selections_global(
+    pixel_count: int = DEFAULT_PIXEL_COUNT,
+    *,
+    idle_mode: str = DEFAULT_IDLE_MODE,
+) -> WizardSelections:
     return WizardSelections(
         scope=SCOPE_GLOBAL,
         board_id="raspberry-pi-pico",
@@ -498,6 +528,7 @@ def _selections_global(pixel_count: int = DEFAULT_PIXEL_COUNT) -> WizardSelectio
         data_pin="board.GP6",
         auto_detect_port=False,
         pixel_count=pixel_count,
+        idle_mode=idle_mode,
     )
 
 
@@ -544,9 +575,12 @@ def test_write_local_config_pins_default_when_existing_file_exists(
 
 
 def test_write_local_config_preserves_unrelated_fields(_isolate_user_home: Path) -> None:
+    """Wizard-unaware fields (baud, brightness) stay put; idle_mode is now
+    wizard-aware so it is overwritten with the user's choice from the prompt.
+    """
     target = _isolate_user_home / CONFIG_FILE_NAME
     target.write_text(
-        json.dumps({"baud": 115200, "brightness": 0.08, "idle_mode": "off"}) + "\n",
+        json.dumps({"baud": 115200, "brightness": 0.08}) + "\n",
         encoding="utf-8",
     )
     written = _write_local_config(_selections_global(pixel_count=12))
@@ -555,9 +589,62 @@ def test_write_local_config_preserves_unrelated_fields(_isolate_user_home: Path)
     assert payload == {
         "baud": 115200,
         "brightness": 0.08,
-        "idle_mode": "off",
         "pixel_count": 12,
     }
+
+
+def test_write_local_config_overwrites_existing_idle_mode_with_wizard_choice(
+    _isolate_user_home: Path,
+) -> None:
+    """The wizard now surfaces idle_mode as a prompt; an existing stale value
+    in the file (e.g. ``"off"`` from an older hand-edited config) is replaced
+    by whatever the wizard collected. This is the fix for the "ring goes dark
+    even though I ran setup with breathing" symptom.
+    """
+    target = _isolate_user_home / CONFIG_FILE_NAME
+    target.write_text(
+        json.dumps({"baud": 115200, "idle_mode": "off"}) + "\n",
+        encoding="utf-8",
+    )
+    written = _write_local_config(_selections_global(pixel_count=24))
+    assert written == target
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload == {
+        "baud": 115200,
+        "idle_mode": "breathing",
+        "pixel_count": 24,
+    }
+
+
+def test_write_local_config_writes_idle_mode_off_when_user_picks_off(
+    _isolate_user_home: Path,
+) -> None:
+    """When the user explicitly picks ``idle_mode = "off"``, the file is
+    created (even at default pixel count and no port choice) and the value
+    is persisted so the host config layer can read it.
+    """
+    target = _isolate_user_home / CONFIG_FILE_NAME
+    assert not target.exists()
+    written = _write_local_config(_selections_global(idle_mode="off"))
+    assert written == target
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload == {"pixel_count": DEFAULT_PIXEL_COUNT, "idle_mode": "off"}
+
+
+def test_write_local_config_default_idle_mode_skips_when_no_other_changes(
+    _isolate_user_home: Path,
+) -> None:
+    """Picking the default idle_mode (``breathing``) alone should not force a
+    file into existence — preserves the existing "all defaults → no file"
+    contract.
+    """
+    target = _isolate_user_home / CONFIG_FILE_NAME
+    assert not target.exists()
+    written = _write_local_config(
+        _selections_global(idle_mode=DEFAULT_IDLE_MODE),
+    )
+    assert written is None
+    assert not target.exists()
 
 
 def test_write_local_config_repo_scope_writes_into_repo(tmp_path: Path) -> None:
@@ -696,7 +783,8 @@ def _bare_result(
 
 
 def test_format_summary_minimal_setup(tmp_path: Path) -> None:
-    """Bare summary shows the venv path, scope, and ring size only."""
+    """Bare summary shows venv, scope, ring size, idle mode, and a Config row
+    explaining why no file was written."""
     result = _bare_result(tmp_path)
     lines = _format_summary(
         result,
@@ -710,9 +798,12 @@ def test_format_summary_minimal_setup(tmp_path: Path) -> None:
     assert str(result.plan.venv_dir) in body
     assert "Scope" in body and SCOPE_GLOBAL in body
     assert "24 LEDs" in body
+    assert "Idle mode" in body
     assert "Serial port" not in body
     assert "Firmware" not in body
-    assert "Config" not in body
+    # New: the bare summary now declares why no config was written.
+    assert "Config" in body
+    assert "not written" in body
 
 
 def test_format_summary_includes_detected_port_and_firmware(tmp_path: Path) -> None:
@@ -919,6 +1010,227 @@ def test_write_local_config_overrides_existing_port_with_chosen(
     assert payload["serial_port"] == "COM12"
 
 
+# ── idle_mode: selections_from_mapping + validation ───────────────────────
+
+
+def _idle_mode_payload(idle_mode: object) -> str:
+    return json.dumps(
+        {
+            "scope": SCOPE_GLOBAL,
+            "board_id": "raspberry-pi-pico",
+            "runtime": RUNTIME_CIRCUITPYTHON,
+            "data_pin": "board.GP6",
+            "idle_mode": idle_mode,
+        }
+    )
+
+
+@pytest.mark.parametrize("idle_mode", ["breathing", "off"])
+def test_selections_from_json_accepts_valid_idle_mode(idle_mode: str) -> None:
+    selections = selections_from_json(_idle_mode_payload(idle_mode))
+    assert selections.idle_mode == idle_mode
+
+
+def test_selections_from_json_defaults_idle_mode_when_absent() -> None:
+    payload = json.dumps(
+        {
+            "scope": SCOPE_GLOBAL,
+            "board_id": "raspberry-pi-pico",
+            "runtime": RUNTIME_CIRCUITPYTHON,
+            "data_pin": "board.GP6",
+        }
+    )
+    selections = selections_from_json(payload)
+    assert selections.idle_mode == DEFAULT_IDLE_MODE
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_selections_from_json_treats_missing_or_empty_idle_mode_as_default(
+    value: object,
+) -> None:
+    selections = selections_from_json(_idle_mode_payload(value))
+    assert selections.idle_mode == DEFAULT_IDLE_MODE
+
+
+def test_selections_from_json_normalizes_idle_mode_case_and_whitespace() -> None:
+    selections = selections_from_json(_idle_mode_payload("  Off  "))
+    assert selections.idle_mode == "off"
+
+
+@pytest.mark.parametrize("bad", ["dim", "BREATHE", "true", "0", "on"])
+def test_selections_from_json_rejects_unknown_idle_mode(bad: str) -> None:
+    with pytest.raises(SetupWizardError, match="idle_mode"):
+        selections_from_json(_idle_mode_payload(bad))
+
+
+@pytest.mark.parametrize("bad", [123, 1.5, True, [], {}])
+def test_selections_from_json_rejects_non_string_idle_mode(bad: object) -> None:
+    with pytest.raises(SetupWizardError, match="idle_mode"):
+        selections_from_json(_idle_mode_payload(bad))
+
+
+def test_to_dict_round_trips_idle_mode() -> None:
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+        idle_mode="off",
+    )
+    assert selections.to_dict()["idle_mode"] == "off"
+
+
+def test_wizard_selections_idle_mode_defaults_to_breathing() -> None:
+    selections = WizardSelections(
+        scope=SCOPE_GLOBAL,
+        board_id="raspberry-pi-pico",
+        runtime=RUNTIME_CIRCUITPYTHON,
+        data_pin="board.GP6",
+    )
+    assert selections.idle_mode == DEFAULT_IDLE_MODE
+
+
+# ── _format_summary + _shadow_warning_for ─────────────────────────────────
+
+
+def _summary_result(tmp_path: Path) -> SetupResult:
+    selections = _selections_global()
+    plan = build_setup_plan(
+        selections, venv_dir=tmp_path / ".venv", package_spec="."
+    )
+    return SetupResult(
+        plan=plan,
+        detected_port=None,
+        firmware_written=(),
+        firmware_prepared_dir=None,
+        firmware_warnings=(),
+        config_written=None,
+    )
+
+
+def test_format_summary_includes_idle_mode_row(tmp_path: Path) -> None:
+    result = _summary_result(tmp_path)
+    lines = _format_summary(
+        result,
+        pixel_count=24,
+        scope=SCOPE_GLOBAL,
+        approve_firmware=False,
+        idle_mode="off",
+    )
+    assert any("Idle mode" in line and "off" in line for line in lines), (
+        f"Idle mode row missing from summary: {lines}"
+    )
+
+
+def test_format_summary_announces_skipped_config(tmp_path: Path) -> None:
+    result = _summary_result(tmp_path)
+    lines = _format_summary(
+        result,
+        pixel_count=DEFAULT_PIXEL_COUNT,
+        scope=SCOPE_GLOBAL,
+        approve_firmware=False,
+        idle_mode=DEFAULT_IDLE_MODE,
+    )
+    assert any(
+        "Config" in line and "not written" in line for line in lines
+    ), f"Skip-write annotation missing: {lines}"
+
+
+def test_shadow_warning_detects_repo_local_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When CWD contains a repo-local config, the helper returns a warning
+    naming the shadowing path. This catches the user's reported scenario
+    (global setup + stale repo-local file with idle_mode=off)."""
+    fake_home = tmp_path / "alt_home"
+    fake_home.mkdir()
+    repo = fake_home / "myrepo"
+    repo.mkdir()
+    shadow = repo / CONFIG_FILE_NAME
+    shadow.write_text(json.dumps({"idle_mode": "off"}), encoding="utf-8")
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(
+        "copilot_command_ring.setup_wizard._user_home", lambda: fake_home
+    )
+
+    selections = _selections_global()
+    lines = _shadow_warning_for(selections, fake_home / CONFIG_FILE_NAME)
+    assert lines is not None
+    joined = "\n".join(lines)
+    assert "shadow" in joined.lower()
+    assert str(shadow) in joined
+
+
+def test_shadow_warning_silent_when_no_repo_local_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No repo-local file in the CWD-to-home walk → no warning."""
+    fake_home = tmp_path / "alt_home"
+    fake_home.mkdir()
+    elsewhere = fake_home / "project"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setattr(
+        "copilot_command_ring.setup_wizard._user_home", lambda: fake_home
+    )
+    assert _shadow_warning_for(_selections_global(), None) is None
+
+
+def test_shadow_warning_silent_when_cwd_outside_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If CWD is outside the home tree, ``find_config_path``'s home fallback
+    never fires regardless, so no warning is needed and the helper must
+    skip the walk to avoid scanning unrelated parts of the filesystem."""
+    fake_home = tmp_path / "alt_home"
+    fake_home.mkdir()
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    monkeypatch.chdir(outside)
+    monkeypatch.setattr(
+        "copilot_command_ring.setup_wizard._user_home", lambda: fake_home
+    )
+    assert _shadow_warning_for(_selections_global(), None) is None
+
+
+def test_shadow_warning_silent_for_repo_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Repo-scoped setup intentionally writes a repo-local file, so there is
+    nothing to warn about."""
+    fake_home = tmp_path / "alt_home"
+    fake_home.mkdir()
+    repo = fake_home / "myrepo"
+    repo.mkdir()
+    (repo / CONFIG_FILE_NAME).write_text("{}", encoding="utf-8")
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(
+        "copilot_command_ring.setup_wizard._user_home", lambda: fake_home
+    )
+    selections = _selections_repo(repo, pixel_count=16)
+    assert _shadow_warning_for(selections, repo / CONFIG_FILE_NAME) is None
+
+
+def test_shadow_warning_silent_when_only_file_is_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the only existing config file is the home file itself, that is
+    not a shadow — that IS the global save the wizard just wrote."""
+    fake_home = tmp_path / "alt_home"
+    fake_home.mkdir()
+    (fake_home / CONFIG_FILE_NAME).write_text("{}", encoding="utf-8")
+    project = fake_home / "project"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(
+        "copilot_command_ring.setup_wizard._user_home", lambda: fake_home
+    )
+    assert (
+        _shadow_warning_for(_selections_global(), fake_home / CONFIG_FILE_NAME)
+        is None
+    )
+
+
 # ── --list-ports-json argparse path ───────────────────────────────────────
 
 
@@ -1025,7 +1337,7 @@ def test_prompt_for_selections_picks_alternate_port_when_autodetect_matches(
     #   2\n          → port flow: "Pick a different port"
     #   2\n          → port list: pick second entry (COM12)
     #   n\n          → approve firmware? no
-    stdin = StringIO("1\n1\n\n\n\ny\n2\n2\nn\n")
+    stdin = StringIO("1\n1\n\n\n\n\ny\n2\n2\nn\n")
     monkeypatch.setattr("sys.stdin", stdin)
     with (
         patch(
@@ -1051,7 +1363,7 @@ def test_prompt_for_selections_uses_autodetected_port_when_user_accepts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Choose option 1 at the port-decision prompt ("Use COM3 (auto-detected)").
-    stdin = StringIO("1\n1\n\n\n\ny\n1\nn\n")
+    stdin = StringIO("1\n1\n\n\n\n\ny\n1\nn\n")
     monkeypatch.setattr("sys.stdin", stdin)
     with (
         patch(
@@ -1071,7 +1383,7 @@ def test_prompt_for_selections_skip_keeps_no_port(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Choose option 3 ("Skip") on the port-decision prompt.
-    stdin = StringIO("1\n1\n\n\n\ny\n3\nn\n")
+    stdin = StringIO("1\n1\n\n\n\n\ny\n3\nn\n")
     monkeypatch.setattr("sys.stdin", stdin)
     with (
         patch(
@@ -1094,7 +1406,7 @@ def test_prompt_for_selections_picks_port_when_autodetect_misses(
     #   1 = "Pick a port from the list"
     #   2 = "Skip — keep any existing saved port"
     # User picks option 1, then chooses the first listed port.
-    stdin = StringIO("1\n1\n\n\n\ny\n1\n1\nn\n")
+    stdin = StringIO("1\n1\n\n\n\n\ny\n1\n1\nn\n")
     monkeypatch.setattr("sys.stdin", stdin)
     with (
         patch(
@@ -1115,7 +1427,7 @@ def test_prompt_for_selections_no_ports_at_all_skips_silently(
 ) -> None:
     # autodetect None + empty list_serial_ports → port picker skips, but the
     # wizard does not abort.
-    stdin = StringIO("1\n1\n\n\n\ny\nn\n")
+    stdin = StringIO("1\n1\n\n\n\n\ny\nn\n")
     monkeypatch.setattr("sys.stdin", stdin)
     with (
         patch(

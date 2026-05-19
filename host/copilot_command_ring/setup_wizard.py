@@ -25,7 +25,13 @@ from .boards import (
     options_payload,
 )
 from .config import Config
-from .constants import CONFIG_FILE_NAME, DEFAULT_PIXEL_COUNT, MAX_PIXEL_COUNT
+from .constants import (
+    CONFIG_FILE_NAME,
+    DEFAULT_IDLE_MODE,
+    DEFAULT_PIXEL_COUNT,
+    MAX_PIXEL_COUNT,
+    VALID_IDLE_MODES,
+)
 from .detect_ports import detect_serial_port, list_serial_ports
 from .firmware_install import (
     FirmwareInstallError,
@@ -83,6 +89,7 @@ class WizardSelections:
     force_hooks: bool = True
     pixel_count: int = DEFAULT_PIXEL_COUNT
     serial_port: str | None = None
+    idle_mode: str = DEFAULT_IDLE_MODE
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-serializable representation."""
@@ -100,6 +107,7 @@ class WizardSelections:
             "force_hooks": self.force_hooks,
             "pixel_count": self.pixel_count,
             "serial_port": self.serial_port,
+            "idle_mode": self.idle_mode,
         }
 
 
@@ -410,6 +418,30 @@ def _coerce_pixel_count(value: object) -> int:
     return coerced
 
 
+def _coerce_idle_mode(value: object) -> str:
+    """Validate and coerce a wizard-input idle_mode.
+
+    Missing / ``None`` / empty string fall back to ``DEFAULT_IDLE_MODE``
+    (``"breathing"``). Any non-empty string outside ``VALID_IDLE_MODES``
+    raises ``SetupWizardError`` so extension/JSON bugs surface loudly
+    instead of silently defaulting back to breathing.
+    """
+    if value is None or value == "":
+        return DEFAULT_IDLE_MODE
+    if not isinstance(value, str):
+        raise SetupWizardError(
+            f"idle_mode must be one of {sorted(VALID_IDLE_MODES)}, got {value!r}"
+        )
+    normalized = value.strip().lower()
+    if not normalized:
+        return DEFAULT_IDLE_MODE
+    if normalized not in VALID_IDLE_MODES:
+        raise SetupWizardError(
+            f"idle_mode must be one of {sorted(VALID_IDLE_MODES)}, got {value!r}"
+        )
+    return normalized
+
+
 def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
     """Validate and convert extension/JSON input into ``WizardSelections``."""
     scope = str(data.get("scope", SCOPE_GLOBAL)).strip().lower()
@@ -433,6 +465,7 @@ def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
         port_text = str(port_value).strip()
         serial_port = port_text if port_text else None
     pixel_count = _coerce_pixel_count(data.get("pixel_count"))
+    idle_mode = _coerce_idle_mode(data.get("idle_mode"))
 
     return WizardSelections(
         scope=scope,
@@ -446,6 +479,7 @@ def selections_from_mapping(data: dict[str, object]) -> WizardSelections:
         force_hooks=_bool_value(data.get("force_hooks"), default=True),
         pixel_count=pixel_count,
         serial_port=serial_port,
+        idle_mode=idle_mode,
     )
 
 
@@ -468,6 +502,10 @@ def _validate_selections(selections: WizardSelections) -> None:
             raise SetupWizardError("repo_path is required for per-repo setup")
         if not selections.repo_path.is_dir():
             raise SetupWizardError(f"repo_path is not a directory: {selections.repo_path}")
+    if selections.idle_mode not in VALID_IDLE_MODES:
+        raise SetupWizardError(
+            f"idle_mode must be one of {sorted(VALID_IDLE_MODES)}, got {selections.idle_mode!r}"
+        )
 
     board = get_board(selections.board_id)
     runtime = get_runtime(board.id, selections.runtime)
@@ -588,18 +626,67 @@ def _user_home() -> Path:
     return Path.home()
 
 
+def _shadow_warning_for(
+    selections: WizardSelections, config_written: Path | None
+) -> list[str] | None:
+    """Return stderr lines warning about a per-repo config that will shadow
+    the wizard's save, or ``None`` if nothing is shadowed.
+
+    ``find_config_path`` resolves repo-local files before the home fallback,
+    so a stale ``./.copilot-command-ring.local.json`` will quietly override
+    the global save the wizard just wrote. This catches the common case
+    where the user followed an older README example, then runs the wizard
+    with global scope, then wonders why their settings have no effect.
+
+    Only walks from CWD up to (but not past) the user's home directory.
+    If CWD is outside the home tree, returns ``None`` — the
+    home-fallback never kicks in for that CWD anyway, so a warning would
+    not be actionable.
+    """
+    if selections.scope != SCOPE_GLOBAL:
+        return None
+    try:
+        cwd = Path.cwd().resolve()
+    except (OSError, RuntimeError):
+        return None
+    try:
+        home = _user_home().resolve()
+    except (OSError, RuntimeError):
+        return None
+    try:
+        cwd.relative_to(home)
+    except ValueError:
+        return None
+    lines: list[str] = []
+    for directory in (cwd, *cwd.parents):
+        if directory == home:
+            return None
+        candidate = directory / CONFIG_FILE_NAME
+        if candidate.is_file():
+            lines.append(
+                "Warning: a repo-scoped config will shadow your global save:"
+            )
+            lines.append(f"  {candidate}")
+            if config_written is not None:
+                lines.append(
+                    f"This file takes precedence over {config_written}."
+                )
+            lines.append(
+                "Delete or edit it so the global settings take effect."
+            )
+            return lines
+    return None
+
+
 def _write_local_config(selections: WizardSelections) -> Path | None:
-    """Persist the wizard's pixel_count (and serial_port, if chosen) to the
-    local JSON config file.
+    """Persist the wizard's hardware choices to the local JSON config file.
 
     Merge semantics: if the target file already exists and parses as a JSON
-    object, its existing fields are preserved and only ``pixel_count`` is
-    overwritten. When ``selections.serial_port`` is set, it is also merged
-    in; when ``selections.serial_port`` is ``None`` (the wizard didn't ask
-    or the user chose "skip"), any pre-existing ``serial_port`` in the file
-    is left untouched. Returns the path that was written, or ``None`` when
-    the wizard chose to skip (default pixel count + no chosen port + no
-    existing file).
+    object, its existing fields are preserved and only ``pixel_count``,
+    ``serial_port`` (when chosen), and ``idle_mode`` (when non-default or
+    already set in the file) are overwritten. Returns the path that was
+    written, or ``None`` when every wizard choice matches its default and
+    no file already exists.
     """
     target = _resolve_local_config_path(selections)
     existing: dict[str, object] = {}
@@ -613,8 +700,12 @@ def _write_local_config(selections: WizardSelections) -> Path | None:
             existing = data
 
     has_chosen_port = selections.serial_port is not None
+    idle_is_default = selections.idle_mode == DEFAULT_IDLE_MODE
+    idle_already_in_file = "idle_mode" in existing
     if (
         selections.pixel_count == DEFAULT_PIXEL_COUNT
+        and idle_is_default
+        and not idle_already_in_file
         and not file_existed
         and not has_chosen_port
     ):
@@ -623,6 +714,8 @@ def _write_local_config(selections: WizardSelections) -> Path | None:
     existing["pixel_count"] = selections.pixel_count
     if has_chosen_port:
         existing["serial_port"] = selections.serial_port
+    if not idle_is_default or idle_already_in_file:
+        existing["idle_mode"] = selections.idle_mode
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
     return target
@@ -915,6 +1008,15 @@ def prompt_for_selections() -> WizardSelections:
     )
     pixel_count = int(pixel_choice)
 
+    idle_mode = _choose(
+        "How should the ring look when Copilot is idle?",
+        (
+            ("breathing", "Breathing — stay dim when idle (recommended)"),
+            ("off", "Off — go dark when all sessions end"),
+        ),
+        default=DEFAULT_IDLE_MODE,
+    )
+
     auto_detect = _confirm("Attempt host USB serial auto-detection?", default=True)
     serial_port: str | None = None
     firmware_target = None
@@ -953,6 +1055,7 @@ def prompt_for_selections() -> WizardSelections:
         force_hooks=True,
         pixel_count=pixel_count,
         serial_port=serial_port,
+        idle_mode=idle_mode,
     )
 
 
@@ -1030,6 +1133,7 @@ def _format_summary(
     scope: str,
     approve_firmware: bool,
     chosen_port: str | None = None,
+    idle_mode: str = DEFAULT_IDLE_MODE,
 ) -> list[str]:
     """Render the post-setup summary as a list of stderr-ready lines.
 
@@ -1046,6 +1150,7 @@ def _format_summary(
     rows.append(("Venv", str(result.plan.venv_dir)))
     rows.append(("Scope", scope))
     rows.append(("Ring size", f"{pixel_count} LEDs"))
+    rows.append(("Idle mode", idle_mode))
     if result.detected_port:
         if chosen_port is not None and chosen_port == result.detected_port:
             suffix = "chosen"
@@ -1061,6 +1166,8 @@ def _format_summary(
         rows.append(("Firmware", "prepared (follow manual runtime steps)"))
     if result.config_written is not None:
         rows.append(("Config", str(result.config_written)))
+    else:
+        rows.append(("Config", "not written; defaults match wizard choices"))
 
     label_width = max(len(label) for label, _ in rows)
     lines = ["Setup complete."]
@@ -1113,10 +1220,16 @@ def run_setup_status_ring_from_args(args: argparse.Namespace) -> bool:
             scope=selections.scope,
             approve_firmware=selections.approve_firmware,
             chosen_port=selections.serial_port,
+            idle_mode=selections.idle_mode,
         )
         print("", file=sys.stderr)
         for line in summary:
             print(line, file=sys.stderr)
+        shadow_warning = _shadow_warning_for(selections, result.config_written)
+        if shadow_warning is not None:
+            print("", file=sys.stderr)
+            for line in shadow_warning:
+                print(line, file=sys.stderr)
         return True
     except (KeyError, OSError, subprocess.CalledProcessError, FirmwareInstallError) as exc:
         print(f"setup-status-ring: {exc}", file=sys.stderr)
