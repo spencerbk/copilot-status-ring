@@ -46,7 +46,7 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `postToolUseFailure` | `tool_error` | Red flash | Red | `tool`, `error` |
 | `permissionRequest` | `working` | Spinner | Magenta | `tool` |
 | `subagentStart` | `subagent_active` | Chase | Magenta | `agent` |
-| `subagentStop` | `idle` | Return to idle | — | `agent` |
+| `subagentStop` | `idle` | Return to idle | — | `agent`, `reason` |
 | `agentStop` | `agent_idle` | Dim breathing | White (dim) | `reason` |
 | `preCompact` | `compacting` | Wipe | Cyan | — |
 | `errorOccurred` | `error` | Flash (long) | Red | `error`, `message`, `recoverable`, `errorContext` |
@@ -60,6 +60,25 @@ When a `notification` arrives with `notification_type: "elicitation_dialog"`, th
 When a `notification` arrives with `notification_type: "permission_prompt"`, the host promotes it to the persistent `awaiting_permission` state. This fires only when the user is actually blocked on an interactive permission dialog — in `--yolo` mode, permissions are auto-approved and no `permission_prompt` notification is emitted. The `permissionRequest` hook event itself always maps to `working` because it fires for both interactive and auto-approved permissions.
 
 When a generic `notification` arrives while the winning persistent state is `working`, `subagent_active`, or `compacting`, the firmware suppresses the white flash and leaves the busy animation running.
+
+---
+
+## Naming-convention support (camelCase / VS Code-compatible)
+
+GitHub Copilot CLI hooks accept **two equivalent naming conventions** per the [official hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference):
+
+| Convention | Event name | Payload field names | Where used |
+|---|---|---|---|
+| camelCase (default) | `sessionStart`, `preToolUse`, `agentStop`, … | `toolName`, `agentName`, `stopReason`, … | Our deployed `copilot-command-ring.json` |
+| VS Code-compatible | `SessionStart`, `PreToolUse`, `Stop` (irregular — not `AgentStop`), `Notification`, … | `tool_name`, `agent_name`, `stop_reason`, … | Cross-tool `.claude/settings.json` / `.claude/settings.local.json` files the runtime also reads |
+
+The host bridge **accepts both forms** in `normalize_event` and resolves PascalCase events through `EVENT_NAME_ALIASES` to the same normalized state. The `event` field on every wire message preserves the **original** invocation name so log consumers can see how the runtime called us.
+
+For VS Code-compatible cross-tool configurations that invoke the wrapper without an event-name argument, `hook_main` falls back to the `hook_event_name` field in the stdin payload (which every VS Code-compatible payload carries). When both an argv event name and `hook_event_name` are present, the argv form wins.
+
+Our own deploy registers only the camelCase form — emitting PascalCase aliases as well would cause duplicate event firing.
+
+Two events have **no** documented PascalCase alias and only fire under their camelCase name: `subagentStart` and `permissionRequest`.
 
 ---
 
@@ -185,29 +204,46 @@ When the notification carries `notification_type: "elicitation_dialog"`, the hos
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `event` | string | Original Copilot hook event name (camelCase) |
+| `event` | string | Original Copilot hook event name. Reflects whichever form the runtime invoked us with — `sessionStart` (camelCase) or `SessionStart` (VS Code-compatible PascalCase). The normalized `state` is identical for both. |
 | `state` | string | Normalized semantic state for firmware |
 
 ### Optional fields (included when available)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `session` | string | Copilot CLI session identifier. The host prefers the hook payload's `sessionId` and falls back to the wrapper-derived process ID for older or empty payloads. Enables multi-session arbitration on firmware. |
+| `session` | string | Copilot CLI session identifier. The host prefers the hook payload's `sessionId` (camelCase) or `session_id` (snake_case) and falls back to the wrapper-derived process ID for older or empty payloads. Enables multi-session arbitration on firmware. |
+| `timestamp` | number/string | Event timestamp as emitted by the runtime (Unix ms in camelCase form, ISO 8601 string in VS Code-compatible form). Forwarded unchanged. |
+| `cwd` | string | Working directory the Copilot CLI was launched from. Useful for log correlation. |
 | `source` | string | How the session was initiated: `"new"`, `"resume"`, or `"startup"`. Forwarded from `sessionStart` for diagnostics. |
+| `initial_prompt` | string | Optional initial prompt on `sessionStart` (camelCase: `initialPrompt`). Truncated to 200 chars. |
+| `prompt` | string | Submitted prompt text on `userPromptSubmitted`. Truncated to 200 chars. |
 | `tool` | string | Tool name (e.g. `bash`, `edit`, `grep`) |
+| `tool_input` | string | Tool arguments on `preToolUse`/`postToolUse`/`postToolUseFailure` (camelCase: `toolArgs`, snake_case: `tool_input`). Stringified and truncated to 200 chars. |
 | `result` | string | Tool execution result |
 | `agent` | string | Sub-agent name |
+| `agent_display_name` | string | Human-friendly subagent label (`subagentStart`/`subagentStop`). |
+| `agent_description` | string | Subagent description (`subagentStart` only). Truncated to 200 chars. |
+| `transcript_path` | string | Path to the transcript file on `agentStop`, `subagentStart`, `subagentStop`, `preCompact`. |
 | `trigger` | string | What triggered the event |
-| `reason` | string | Reason for state change |
+| `reason` | string | Reason for state change. Extracted from `stopReason`/`stop_reason` on `agentStop` and `subagentStop`. |
 | `error` | string | Error description |
-| `errorContext` | string | Error context identifier |
+| `error_stack` | string | Stack trace on `errorOccurred` (when present). Truncated to 200 chars. |
+| `errorContext` | string | Error context identifier (camelCase: `errorContext`, snake_case: `error_context`). |
 | `recoverable` | boolean | Whether the error is recoverable |
+| `custom_instructions` | string | Custom compaction instructions on `preCompact`. Truncated to 200 chars. |
 | `notification_type` | string | Type of notification |
-| `message` | string | Notification message |
+| `title` | string | Notification title (when present) |
+| `message` | string | Notification message. Truncated to 200 chars. |
 | `ttl_s` | integer | Per-state decay window in seconds. The firmware treats a session's persistent state as `agent_idle` if no refresh arrives within this many seconds. Transient states and `agent_idle` itself have no TTL. |
 | `idle_mode` | string | What the ring should do when all sessions are gone: `"breathing"` (default, dim breathing forever) or `"off"` (fully dark). Injected by the host on every message so the firmware always has a fresh value, including immediately after a reload. |
 | `brightness` | number | Runtime LED brightness scalar (`0.0`–`1.0`). Injected by the host on every message and applied by current firmware variants after receipt. |
 | `pixel_count` | integer | Runtime active LED count. Injected by the host on every message and applied by current firmware variants after receipt. |
+
+### Intentionally not extracted
+
+| Field | Reason |
+|-------|--------|
+| `toolResult.textResultForLlm` / `tool_result.text_result_for_llm` | The verbatim LLM-bound tool output. Can be many kilobytes (full file views, grep dumps, bash output) and may contain code or secrets. A 24-LED ring has no use for the text — embedding it on every wire message would strain the serial buffer and leak content into firmware logs. |
 
 ---
 

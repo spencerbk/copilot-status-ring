@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "PreToolUse",
+  "session_id": "abc123-def456",
+  "timestamp": "2024-01-07T08:00:01Z",
+  "cwd": "/path/to/project",
+  "tool_name": "edit",
+  "tool_input": {"path": "src/main.py", "content": "print('hello')"}
+}

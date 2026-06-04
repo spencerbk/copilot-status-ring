@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "PreCompact",
+  "session_id": "abc123-def456",
+  "timestamp": "2024-01-07T08:00:07Z",
+  "cwd": "/path/to/project",
+  "transcript_path": "/tmp/copilot-transcript.jsonl",
+  "trigger": "auto",
+  "custom_instructions": "preserve test discussions"
+}

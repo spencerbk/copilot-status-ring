@@ -1,0 +1,13 @@
+{
+  "hook_event_name": "ErrorOccurred",
+  "session_id": "abc123-def456",
+  "timestamp": "2024-01-07T08:00:06Z",
+  "cwd": "/path/to/project",
+  "error": {
+    "name": "ToolFailure",
+    "message": "Operation timed out",
+    "stack": "at toolHandler (/app/dist/index.js:42:17)"
+  },
+  "error_context": "tool_execution",
+  "recoverable": true
+}

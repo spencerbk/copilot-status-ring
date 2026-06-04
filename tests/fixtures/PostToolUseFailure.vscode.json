@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "PostToolUseFailure",
+  "session_id": "abc123-def456",
+  "timestamp": "2024-01-07T08:00:03Z",
+  "cwd": "/path/to/project",
+  "tool_name": "bash",
+  "tool_input": {"command": "ls /nonexistent"},
+  "error": "Command failed: ls: cannot access"
+}

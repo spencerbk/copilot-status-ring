@@ -322,7 +322,7 @@ When a `postToolUse` event includes `toolResult.resultType`, the host distinguis
 
 When a `notification` arrives while the ring is already showing `working`, `subagent_active`, or `compacting`, the firmware keeps the busy animation instead of interrupting it with a white flash. When the notification carries `notification_type: "elicitation_dialog"`, the ring shows a persistent yellow pulse instead — signaling that the agent is blocked waiting for user input. Similarly, `notification_type: "permission_prompt"` promotes to `awaiting_permission` — this only fires when the user is actually blocked on an interactive permission dialog (not in `--yolo` mode). While that pulse is active, lower-priority transient flashes are suppressed so the ring stays yellow until the user responds; only a red `error` flash can interrupt it.
 
-The serial protocol uses JSON Lines — one JSON object per line over USB serial. See [`docs/hook-events.md`](docs/hook-events.md) for the full protocol specification.
+The serial protocol uses JSON Lines — one JSON object per line over USB serial. The host accepts both the camelCase Copilot CLI hook format and the VS Code-compatible PascalCase variant (e.g. `SessionStart`, `Stop`, `Notification`); both produce the same normalized state. See [`docs/hook-events.md`](docs/hook-events.md) for the full protocol specification.
 
 ## Project Structure
 

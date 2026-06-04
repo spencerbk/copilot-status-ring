@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "SessionStart",
+  "session_id": "abc123-def456",
+  "timestamp": "2024-01-07T08:00:00Z",
+  "cwd": "/path/to/project",
+  "source": "new",
+  "initial_prompt": "Resume the refactor"
+}
