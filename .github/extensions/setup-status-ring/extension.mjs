@@ -184,6 +184,72 @@ function optionByLabel(items, label) {
     return found.value;
 }
 
+async function pickFirmwareTarget(session) {
+    // 3-option flow when a CIRCUITPY drive is auto-detected, 2-option
+    // flow otherwise. Always offers "Skip" so the user can prepare
+    // firmware files now and copy them manually later without being
+    // trapped by an input widget that rejects empty submissions.
+    // Returns the chosen drive path string or null when the user
+    // skipped. Mirrors pickSerialPort.
+    const USE_DETECTED = "use_detected";
+    const ENTER_PATH = "enter_path";
+    const SKIP = "skip";
+
+    const circuitpy = await detectCircuitPy(session);
+    if (circuitpy.detected) {
+        await session.log(`Detected CIRCUITPY drive: ${circuitpy.path}`);
+    } else {
+        await session.log("No mounted CIRCUITPY drive was auto-detected.");
+    }
+
+    const options = [];
+    if (circuitpy.detected) {
+        options.push({
+            label: `Install to detected CIRCUITPY drive (${circuitpy.path})`,
+            value: USE_DETECTED,
+        });
+        options.push({ label: "Enter a different drive path…", value: ENTER_PATH });
+    } else {
+        options.push({ label: "Enter a drive path…", value: ENTER_PATH });
+    }
+    options.push({
+        label: "Skip — prepare firmware files only, copy them manually later",
+        value: SKIP,
+    });
+
+    const decisionLabel = await session.ui.select(
+        "Where should the CircuitPython firmware be installed?",
+        options.map((option) => option.label),
+    );
+    if (!decisionLabel) {
+        // Dismiss => skip; do not abort the wizard.
+        await session.log(
+            "Firmware install target skipped; files will be prepared for manual copy.",
+        );
+        return null;
+    }
+    const decision = optionByLabel(options, decisionLabel);
+    if (decision === USE_DETECTED) return circuitpy.path;
+    if (decision === SKIP) return null;
+
+    // ENTER_PATH: prompt for a drive path. Treat dismissal or empty
+    // submission as "skip" so the user is never trapped by a
+    // required-field widget. The description names both outcomes.
+    const entered = await session.ui.input("CIRCUITPY drive path", {
+        title: "CircuitPython target drive",
+        description:
+            "Full path to the mounted CIRCUITPY drive (e.g. D:/ on Windows or /Volumes/CIRCUITPY on macOS). Dismiss to skip and copy firmware files manually later.",
+        default: circuitpy.path || "",
+    });
+    if (!entered) {
+        await session.log(
+            "No firmware drive entered; files will be prepared for manual copy.",
+        );
+        return null;
+    }
+    return entered;
+}
+
 async function collectSelections(session) {
     const options = await loadOptions();
     const scopeLabel = await session.ui.select("Where should the ring work?", [
@@ -312,14 +378,7 @@ async function collectSelections(session) {
             "Approve writing or preparing firmware for this connected board?",
         );
         if (approveFirmware && runtimeId === "circuitpython") {
-            const circuitpy = await detectCircuitPy(session);
-            firmwareTarget = await session.ui.input("CIRCUITPY drive path", {
-                title: "CircuitPython target drive",
-                description:
-                    "Leave blank to prepare firmware only and copy it manually later.",
-                default: circuitpy.path || "",
-            });
-            if (firmwareTarget === "") firmwareTarget = null;
+            firmwareTarget = await pickFirmwareTarget(session);
         }
     }
 

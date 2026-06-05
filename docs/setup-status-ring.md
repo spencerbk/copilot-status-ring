@@ -41,8 +41,22 @@ keeping the durable setup logic in the Python package.
    the `CIRCUITPY` drive, which is independent of the host's data serial
    port.
 6. Requires explicit approval before preparing or writing firmware files.
-   The chosen ring size is templated into the copied source — `NUM_PIXELS`
-   for CircuitPython/MicroPython and `#define PIXEL_COUNT` in the Arduino
+   When approved on a CircuitPython runtime, the wizard then offers three
+   options for the install destination:
+   - **Install to detected CIRCUITPY drive (`<path>`)** — copy `boot.py`
+     and `code.py` directly to the auto-detected mounted drive.
+   - **Enter a different drive path…** — type a mount path manually
+     (e.g. `D:/` on Windows or `/Volumes/CIRCUITPY` on macOS). Dismissing
+     the input or submitting empty is treated as a skip rather than a
+     required-field error.
+   - **Skip — prepare firmware files only, copy them manually later** —
+     leave prepared files under the user-level setup directory; no drive
+     is written to.
+
+   When no CIRCUITPY drive is auto-detected the wizard drops the first
+   option but still offers "Enter a drive path…" and "Skip". The chosen
+   ring size is templated into the copied source — `NUM_PIXELS` for
+   CircuitPython/MicroPython and `#define PIXEL_COUNT` in the Arduino
    `copilot_types.h` header — so the firmware boots with the correct LED
    count even before the host bridge has sent its first message.
 7. Persists the chosen ring size, idle mode, and serial port to
