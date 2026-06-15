@@ -54,7 +54,7 @@ Both work well at the default low brightness. Add a 74AHCT125 level shifter if t
 
 The host bridge sends `pixel_count` in every message, and all three firmware variants apply it at runtime — so a single firmware build supports any ring size you wire up. The setup wizard (`setup-status-ring`) prompts you to pick from 24, 16, or 12 LEDs and writes your choice into `~/.copilot-command-ring.local.json` (global scope) or `<repo>/.copilot-command-ring.local.json` (per-repo scope).
 
-You can also override outside the wizard by setting `COPILOT_RING_PIXEL_COUNT` or editing the `pixel_count` field in your local JSON config. The spinner segment auto-scales to ~25% of the ring (with a floor of 2 LEDs) at any size.
+You can also override outside the wizard by running `copilot-command-ring set-pixels <count>` (the quickest path — updates `pixel_count` in your local config and preserves other fields), setting `COPILOT_RING_PIXEL_COUNT`, or editing the `pixel_count` field in your local JSON config. The spinner segment auto-scales to ~25% of the ring (with a floor of 2 LEDs) at any size.
 
 > **Startup wipe note:** The firmware-default `NUM_PIXELS` (CircuitPython, MicroPython) and `PIXEL_COUNT` (Arduino) is `24`. When you flash through `setup-status-ring`, the wizard rewrites that constant in the copied source so the boot wipe already matches your ring. If you flash without the wizard, edit `NUM_PIXELS` / `#define PIXEL_COUNT` to your ring size before uploading — otherwise the wipe will assume 24 LEDs until the first host message arrives.
 
