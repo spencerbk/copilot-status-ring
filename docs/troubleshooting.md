@@ -4,8 +4,8 @@ Common issues and solutions for the Copilot Command Ring.
 
 ## Contents
 
-- [Symptom index](#symptom-index)
 - [Run the doctor first](#run-the-doctor-first)
+- [Symptom index](#symptom-index)
 - [Start with these checks](#start-with-these-checks)
 - ["No serial port detected"](#no-serial-port-detected)
 - [`copilot-command-ring: command not found`](#copilot-command-ring-command-not-found)
@@ -15,6 +15,7 @@ Common issues and solutions for the Copilot Command Ring.
 - [Ring becomes unresponsive after long sessions](#ring-becomes-unresponsive-after-long-sessions)
 - [MicroPython-specific issues](#micropython-specific-issues)
 - [Ring appears offline / hook silently doing nothing](#ring-appears-offline--hook-silently-doing-nothing)
+- [Ring goes dark unexpectedly during active sessions](#ring-goes-dark-unexpectedly-during-active-sessions)
 - [Animations look wrong](#animations-look-wrong)
 - [Permission denied on serial port](#permission-denied-on-serial-port)
 - [Hook causes Copilot errors](#hook-causes-copilot-errors)

@@ -17,6 +17,7 @@ Step-by-step guide to set up the Copilot Command Ring on macOS.
 - [8. Test with simulation](#8-test-with-simulation)
 - [9. Verify hooks](#9-verify-hooks)
 - [Environment variables reference](#environment-variables-reference)
+- [Smaller rings](#smaller-rings)
 
 ---
 

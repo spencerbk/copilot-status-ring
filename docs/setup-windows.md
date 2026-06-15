@@ -16,6 +16,7 @@ Step-by-step guide to set up the Copilot Command Ring on Windows.
 - [7. Test with dry-run simulation](#7-test-with-dry-run-simulation)
 - [8. Verify hooks load in Copilot CLI](#8-verify-hooks-load-in-copilot-cli)
 - [Environment variables reference](#environment-variables-reference)
+- [Smaller rings](#smaller-rings)
 
 ---
 

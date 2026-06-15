@@ -6,6 +6,7 @@ This document describes every Copilot CLI hook event that the Copilot Command Ri
 
 - [Protocol overview](#protocol-overview)
 - [Event mapping table](#event-mapping-table)
+- [Naming-convention support (camelCase / VS Code-compatible)](#naming-convention-support-camelcase--vs-code-compatible)
 - [Example normalized messages](#example-normalized-messages)
 - [Required and optional fields](#required-and-optional-fields)
 - [Important: stdout cleanliness](#important-stdout-cleanliness)
