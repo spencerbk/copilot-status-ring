@@ -242,7 +242,7 @@ Most users can start with no configuration file. Add only the fields you need:
 |------|---------------------|
 | Auto-detect finds the wrong board | Set `COPILOT_RING_PORT` or `serial_port` |
 | LEDs are too bright or too dim | Set `COPILOT_RING_BRIGHTNESS` or `brightness` |
-| Your ring has a different LED count | Pick it during `setup-status-ring` (the wizard prompts for 24 / 16 / 12) or set `COPILOT_RING_PIXEL_COUNT` / `pixel_count` |
+| Your ring has a different LED count | Run `copilot-command-ring set-pixels <count>` for a quick update, pick it during `setup-status-ring` (the wizard prompts for 24 / 16 / 12), or set `COPILOT_RING_PIXEL_COUNT` / `pixel_count` |
 | The ring should go dark after sessions end | Set `"idle_mode": "off"` in the config file |
 | Test without connected hardware | Run `python -m copilot_command_ring.simulate --dry-run`; set `COPILOT_RING_DRY_RUN=1` to make hooks skip serial sends |
 

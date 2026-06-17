@@ -8,6 +8,7 @@ setup                 Install global hooks (all repos, one-time).
 deploy <target-dir>   Deploy hooks into a specific repository.
 hook <event_name>     Handle a Copilot CLI hook event (called by deployed wrappers).
 refresh               Re-run only the host pip install step (post git-pull / release upgrade).
+set-pixels <count>    Update the ring's LED count in the local config file.
 doctor                Run a one-shot health check (config, ports, lock, ping).
 """
 
@@ -97,6 +98,24 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
 
+    # ── set-pixels ─────────────────────────────────────────────────────
+    set_pixels_parser = sub.add_parser(
+        "set-pixels",
+        help="Update the ring's LED count in the local config file",
+    )
+    set_pixels_parser.add_argument(
+        "count",
+        type=int,
+        help="Number of LEDs on the ring (e.g. 24)",
+    )
+    set_pixels_parser.add_argument(
+        "--config-dir",
+        help=(
+            "Directory to start searching for "
+            ".copilot-command-ring.local.json (default: cwd)"
+        ),
+    )
+
     # ── doctor ─────────────────────────────────────────────────────────
     doctor_parser = sub.add_parser(
         "doctor",
@@ -149,6 +168,15 @@ def main(argv: list[str] | None = None) -> None:
         from .setup_wizard import run_setup_status_ring_from_args
 
         ok = run_setup_status_ring_from_args(args)
+        sys.exit(0 if ok else 1)
+
+    elif args.command == "set-pixels":
+        from pathlib import Path
+
+        from .set_pixels import run_set_pixels
+
+        config_dir = Path(args.config_dir) if args.config_dir else None
+        ok = run_set_pixels(args.count, config_dir=config_dir)
         sys.exit(0 if ok else 1)
 
     elif args.command == "doctor":
