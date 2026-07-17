@@ -100,6 +100,32 @@ def _load_transient_policy(path: Path) -> types.SimpleNamespace:
     )
 
 
+def _load_clockwise_head_index(path: Path) -> types.FunctionType:
+    """Load the spinner direction helper from Python firmware via AST.
+
+    Executes only the ``_clockwise_head_index`` function definition so the
+    hardware-only CircuitPython/MicroPython modules never need importing.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    node = next(
+        (
+            item
+            for item in tree.body
+            if isinstance(item, ast.FunctionDef)
+            and item.name == "_clockwise_head_index"
+        ),
+        None,
+    )
+    assert node is not None, f"_clockwise_head_index not found in {path}"
+
+    namespace: dict[str, object] = {}
+    module = ast.Module(body=[node], type_ignores=[])
+    exec(compile(module, str(path), "exec"), namespace)  # noqa: S102
+    helper = namespace["_clockwise_head_index"]
+    assert isinstance(helper, types.FunctionType)
+    return helper
+
+
 # ── STATE_MAP consistency ─────────────────────────────────────────────────
 
 
@@ -525,36 +551,76 @@ class TestSpinnerAutoScaleParity:
 class TestSpinnerRotationDirection:
     """All firmware variants must rotate the spinner clockwise on Adafruit rings.
 
-    Adafruit NeoPixel rings are wired so LED indices increase counter-clockwise
-    when viewed from the LED face. The lit segment therefore moves CW only when
-    the head's motion over time is *negated* relative to ``int(frac * N)``.
-    These tests catch a future refactor that accidentally restores the
-    increasing-index head motion (which appears CCW).
+    Adafruit's published PCB layouts show pixel indices advance counter-clockwise
+    on the 16-pixel ring but clockwise on the 12- and 24-pixel rings. Each
+    firmware variant therefore maps forward animation progress to the physical
+    index through a ``_clockwise_head_index`` / ``clockwiseHeadIndex`` helper:
+    forward for the 12/24 layouts, reversed for the 16 layout, and reversed for
+    unknown sizes to preserve prior behavior. These tests lock in that policy and
+    catch a refactor that restores the old universal negation.
     """
 
-    def test_circuitpython_spinner_head_is_negated(self) -> None:
-        src = CP_CODE.read_text(encoding="utf-8")
-        match = re.search(
-            r"def _anim_spinner\(self.*?(?=\n    def )", src, re.DOTALL,
-        )
-        assert match, "_anim_spinner not found in CircuitPython firmware"
-        body = match.group(0)
-        assert "head = (-int(frac * self.num_pixels)) % self.num_pixels" in body, (
-            "CircuitPython spinner must negate head's motion for CW rotation"
-        )
+    def test_python_variants_map_physical_ring_direction(self) -> None:
+        for path in (CP_CODE, MP_CODE):
+            clockwise_head_index = _load_clockwise_head_index(path)
+            # 12/24 rings index clockwise: forward motion is preserved.
+            assert clockwise_head_index(1, 12) == 1, path
+            assert clockwise_head_index(1, 24) == 1, path
+            assert clockwise_head_index(5, 24) == 5, path
+            # 16 ring indexes counter-clockwise: motion is reversed.
+            assert clockwise_head_index(1, 16) == 15, path
+            # Unknown/custom sizes keep the previous reversed behavior.
+            assert clockwise_head_index(1, 20) == 19, path
+            # Wrap-around holds in both directions.
+            assert clockwise_head_index(24, 24) == 0, path
+            assert clockwise_head_index(16, 16) == 0, path
 
-    def test_micropython_spinner_head_is_negated(self) -> None:
-        src = MP_CODE.read_text(encoding="utf-8")
-        match = re.search(
-            r"def _anim_spinner\(self.*?(?=\n    def )", src, re.DOTALL,
-        )
-        assert match, "_anim_spinner not found in MicroPython firmware"
-        body = match.group(0)
-        assert "head = (-int(frac * self.num_pixels)) % self.num_pixels" in body, (
-            "MicroPython spinner must negate head's motion for CW rotation"
-        )
+    def test_python_variants_spinner_calls_direction_helper(self) -> None:
+        for path in (CP_CODE, MP_CODE):
+            src = path.read_text(encoding="utf-8")
+            match = re.search(
+                r"def _anim_spinner\(self.*?(?=\n    def )", src, re.DOTALL,
+            )
+            assert match, f"_anim_spinner not found in {path}"
+            body = match.group(0)
+            assert re.search(
+                r"forward\s*=\s*int\(\s*frac\s*\*\s*self\.num_pixels\s*\)",
+                body,
+            ), f"{path} spinner must compute forward = int(frac * self.num_pixels)"
+            assert re.search(
+                r"head\s*=\s*_clockwise_head_index\(\s*forward\s*,"
+                r"\s*self\.num_pixels\s*,?\s*\)",
+                body,
+            ), f"{path} spinner must derive head via _clockwise_head_index"
+            assert (
+                "head = (-int(frac * self.num_pixels)) % self.num_pixels"
+                not in body
+            ), f"{path} spinner must not restore the universal negation"
 
-    def test_arduino_spinner_head_is_negated(self) -> None:
+    def test_arduino_defines_direction_helper(self) -> None:
+        src = ARDUINO_CODE.read_text(encoding="utf-8")
+        match = re.search(
+            r"static int clockwiseHeadIndex\([^)]*\)\s*\{(.*?)\n\}",
+            src,
+            re.DOTALL,
+        )
+        assert match, "clockwiseHeadIndex not found in Arduino firmware"
+        body = match.group(1)
+        # Forward branch for the clockwise-indexed 12/24 rings.
+        assert re.search(
+            r"pixelCount\s*==\s*12\s*\|\|\s*pixelCount\s*==\s*24", body,
+        ), "clockwiseHeadIndex must select forward motion for 12/24 rings"
+        assert re.search(
+            r"return\s+forward\s*%\s*pixelCount", body,
+        ), "clockwiseHeadIndex must preserve forward motion for 12/24 rings"
+        # Reversed fallback for the 16 ring and unknown sizes.
+        assert re.search(
+            r"return\s*\(\s*pixelCount\s*-\s*\(\s*forward\s*%\s*pixelCount\s*\)"
+            r"\s*\)\s*%\s*pixelCount",
+            body,
+        ), "clockwiseHeadIndex must reverse motion in the fallback branch"
+
+    def test_arduino_spinner_calls_direction_helper(self) -> None:
         src = ARDUINO_CODE.read_text(encoding="utf-8")
         match = re.search(
             r"static void animSpinner\([^)]*\)\s*\{(.*?)\n\}",
@@ -563,6 +629,11 @@ class TestSpinnerRotationDirection:
         )
         assert match, "animSpinner not found in Arduino firmware"
         body = match.group(1)
-        assert "(runtimePixelCount - forward) % runtimePixelCount" in body, (
-            "Arduino spinner must compute head as (N - forward) % N for CW rotation"
+        assert re.search(
+            r"int\s+head\s*=\s*clockwiseHeadIndex\(\s*forward\s*,"
+            r"\s*runtimePixelCount\s*\)",
+            body,
+        ), "Arduino spinner must derive head via clockwiseHeadIndex"
+        assert "(runtimePixelCount - forward) % runtimePixelCount" not in body, (
+            "Arduino spinner must not restore the universal negation"
         )

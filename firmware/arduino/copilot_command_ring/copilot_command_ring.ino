@@ -664,13 +664,23 @@ static void animWipe(uint32_t color, unsigned long duration) {
 // Animation: spinner — rotating segment of width LEDs, period ms per rev
 // ---------------------------------------------------------------------------
 
+// Map forward animation progress to the physical ring index. Adafruit's 12-
+// and 24-pixel rings advance their LED indices clockwise, while the 16-pixel
+// ring advances counter-clockwise (per Adafruit's PCB layouts). Preserve
+// forward motion for the clockwise-indexed rings and reverse it otherwise;
+// unknown/custom sizes keep the reversed behavior to avoid changing output.
+static int clockwiseHeadIndex(int forward, uint16_t pixelCount) {
+  if (pixelCount == 12 || pixelCount == 24)
+    return forward % pixelCount;
+  return (pixelCount - (forward % pixelCount)) % pixelCount;
+}
+
 static void animSpinner(uint32_t color, int width, unsigned long period) {
   unsigned long elapsed = millis() - stateStartMs;
-  // Adafruit NeoPixel rings are wired so LED indices increase
-  // counter-clockwise when viewed from the LED face. Negate the head's
-  // motion so the lit segment appears to rotate clockwise.
+  // Map forward progress to the physical index so the lit segment rotates
+  // clockwise on every supported Adafruit ring size.
   int forward = (int)((elapsed % period) * runtimePixelCount / period);
-  int head = (runtimePixelCount - forward) % runtimePixelCount;
+  int head = clockwiseHeadIndex(forward, runtimePixelCount);
   ring.clear();
   for (uint16_t i = 0; i < runtimePixelCount; i++) {
     int dist = (head - i + runtimePixelCount) % runtimePixelCount;
