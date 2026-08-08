@@ -52,7 +52,7 @@ _install_desktop_entry() {
 Type=Application
 Name=$REPO_NAME (Copilot)
 Comment=Open $REPO_NAME with GitHub Copilot CLI
-Exec=lxterminal --working-directory="$REPO_DIR" --title="$REPO_NAME (Copilot)" -e "bash -c 'copilot --yolo --experimental; exec bash'"
+Exec=lxterminal --working-directory="$REPO_DIR" --title="$REPO_NAME (Copilot)" -e "bash -c 'copilot --yolo --experimental --max-autopilot-continues 22; exec bash'"
 Icon=utilities-terminal
 Terminal=false
 Categories=Development;
@@ -67,4 +67,4 @@ _install_desktop_entry "$HOME/.local/share/applications"
 # -----------------------------------------------------------
 # Launch LXTerminal with Copilot CLI
 # -----------------------------------------------------------
-lxterminal --working-directory="$REPO_DIR" --title="$REPO_NAME (Copilot)" -e "bash -c 'copilot --yolo --experimental; exec bash'" &
+lxterminal --working-directory="$REPO_DIR" --title="$REPO_NAME (Copilot)" -e "bash -c 'copilot --yolo --experimental --max-autopilot-continues 22; exec bash'" &

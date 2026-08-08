@@ -48,7 +48,7 @@ if not exist "%FRAGMENT_PATH%" (
         "$frag = @{" ^
         "    profiles = @(@{" ^
         "        name = '%REPO_NAME% (Copilot)';" ^
-        "        commandline = 'cmd.exe /k copilot --yolo --experimental';" ^
+        "        commandline = 'cmd.exe /k copilot --yolo --experimental --max-autopilot-continues 22';" ^
         "        startingDirectory = '%REPO_DIR%';" ^
         "        tabTitle = '%REPO_NAME% (Copilot)';" ^
         "        tabColor = '%TAB_COLOR%';" ^
@@ -64,4 +64,4 @@ if not exist "%FRAGMENT_PATH%" (
 :: Launch (always uses inline args so it works regardless of
 :: whether WT has loaded the fragment yet)
 :: -----------------------------------------------------------
-start "" wt.exe -w new --title "%REPO_NAME% (Copilot)" --tabColor "%TAB_COLOR%" --suppressApplicationTitle -d "%REPO_DIR%" cmd.exe /k "title %REPO_NAME% (Copilot) && copilot --yolo --experimental"
+start "" wt.exe -w new --title "%REPO_NAME% (Copilot)" --tabColor "%TAB_COLOR%" --suppressApplicationTitle -d "%REPO_DIR%" cmd.exe /k "title %REPO_NAME% (Copilot) && copilot --yolo --experimental --max-autopilot-continues 22"
