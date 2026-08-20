@@ -253,13 +253,13 @@ async function pickFirmwareTarget(session) {
 async function collectSelections(session) {
     const options = await loadOptions();
     const scopeLabel = await session.ui.select("Where should the ring work?", [
-        "All repositories (recommended)",
-        "One repository only",
+        "All repositories — Copilot CLI + GitHub Copilot App (recommended)",
+        "One repository only — Copilot CLI hooks",
     ]);
     if (!scopeLabel) return null;
 
     let repoPath = null;
-    if (scopeLabel === "One repository only") {
+    if (scopeLabel === "One repository only — Copilot CLI hooks") {
         repoPath = await session.ui.input("Repository path", {
             title: "Target repository",
             description: "Root directory of the repository where hooks should be deployed.",
@@ -383,7 +383,10 @@ async function collectSelections(session) {
     }
 
     return {
-        scope: scopeLabel === "One repository only" ? "repo" : "global",
+        scope:
+            scopeLabel === "One repository only — Copilot CLI hooks"
+                ? "repo"
+                : "global",
         repo_path: repoPath,
         board_id: boardId,
         runtime: runtimeId,

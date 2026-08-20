@@ -1,6 +1,7 @@
 # Hook Events Reference
 
-This document describes every Copilot CLI hook event that the Copilot Command Ring handles, the serial protocol, and the normalized messages sent to the firmware.
+This document describes Copilot CLI hooks, the probe-gated local desktop App
+event bridge, the serial protocol, and normalized messages sent to firmware.
 
 ## Contents
 
@@ -61,6 +62,35 @@ When a `notification` arrives with `notification_type: "elicitation_dialog"`, th
 When a `notification` arrives with `notification_type: "permission_prompt"`, the host promotes it to the persistent `awaiting_permission` state. This fires only when the user is actually blocked on an interactive permission dialog — in `--yolo` mode, permissions are auto-approved and no `permission_prompt` notification is emitted. The `permissionRequest` hook event itself always maps to `working` because it fires for both interactive and auto-approved permissions.
 
 When a generic `notification` arrives while the winning persistent state is `working`, `subagent_active`, or `compacting`, the firmware suppresses the white flash and leaves the busy animation running.
+
+### Local desktop App event coverage
+
+The marker-owned extension forwards only after
+`(await session.rpc.mcp.apps.getHostContext()).context.platform === "desktop"`.
+Missing, non-desktop, and error results stay inactive, preserving native CLI
+hooks without duplicate sends. Every SDK hook callback returns `null`; the
+five-second wrapper boundary catches errors and never changes Copilot
+decisions.
+
+| App callback/event | Wrapper event |
+|---|---|
+| `onSessionStart` | `sessionStart` |
+| `onUserPromptSubmitted` | `userPromptSubmitted` |
+| `onPreToolUse` | `preToolUse` |
+| `onPostToolUse` | `postToolUse` |
+| `onPostToolUseFailure` | `postToolUseFailure` |
+| `onErrorOccurred` | `errorOccurred` |
+| `onAgentStop` | `agentStop` |
+| `onSessionEnd` | `sessionEnd` |
+| `permission.requested` | `notification` with `notification_type=permission_prompt` |
+| `session.compaction_start` | `preCompact` (no fabricated trigger) |
+| aborted `session.idle` only | `agentStop` with `stopReason=aborted` |
+
+The App bridge does not register tools, commands, permission/input handlers, or
+elicitation handlers, and it does not synthesize subagent events. It covers
+local standalone desktop sessions only; cloud activity is out of scope.
+Discovery, host context, and subscription shapes are experimental
+runtime-evidence-backed behavior, not stable documented SDK guarantees.
 
 ---
 

@@ -36,8 +36,9 @@ Defaults:
 Options:
   --yes                    Accept safe defaults without prompting.
   --dry-run                Print the setup plan; do not create a venv or install.
-  --global                 Install global Copilot CLI hooks (default).
-  --repo PATH              Deploy hooks to one repository instead of globally.
+  --global                 Install global Copilot CLI hooks and the local
+                           GitHub Copilot App extension (default).
+  --repo PATH              Deploy CLI hooks to one repository instead.
   --board ID               Board id or alias (default: raspberry-pi-pico).
   --runtime ID             Firmware runtime (default: circuitpython).
   --pin PIN                NeoPixel data pin override.
@@ -203,6 +204,9 @@ print_summary() {
     printf "  Scope: %s\n" "$SCOPE"
     if [[ "$SCOPE" == "repo" ]]; then
         printf "  Repository: %s\n" "$REPO_PATH"
+        printf "  GitHub Copilot App support requires global setup.\n"
+    else
+        printf "  Integration: Copilot CLI + local GitHub Copilot App\n"
     fi
     printf "  Board: %s\n" "$BOARD_ID"
     printf "  Runtime: %s\n" "$RUNTIME"

@@ -24,6 +24,9 @@ copilot-command-ring = "copilot_command_ring.cli:main"
 [tool.setuptools.packages.find]
 where = ["host"]
 
+[tool.setuptools.package-data]
+copilot_command_ring = ["copilot_app_extension/*.mjs"]
+
 [tool.ruff]
 target-version = "py39"
 line-length = 100

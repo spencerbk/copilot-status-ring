@@ -318,15 +318,15 @@ def run_refresh(
     package_spec: str | None = None,
     runner: Callable[[Sequence[str]], None] | None = None,
 ) -> bool:
-    """Re-install / upgrade the host package into the wizard's venv.
+    """Re-install the host package and deploy the newly installed App extension.
 
     Designed as the user-facing recovery action for the "I pulled new
     code (or a new release shipped) but the hooks are still running
-    the previous version" case: a frozen ``pip install`` freezes the
-    source tree, so source-tree edits only reach the hooks once pip
-    is re-run. This function performs **only** the pip install step
-    that the full wizard performs — no prompts, no firmware copy, no
-    hook reinstall, no simulation. It is safe to call after
+    the previous version" case: a frozen ``pip install`` freezes the source tree.
+    After pip succeeds, this function invokes the console script from the
+    refreshed venv rather than calling stale imported deployment code. It
+    performs no prompts, firmware copy, native hook reinstall, or simulation.
+    It is safe to call after
     ``git pull`` or whenever you suspect the installed package has
     drifted from the source.
 
@@ -337,8 +337,8 @@ def run_refresh(
     is editable (``pip install -e``); for the GitHub URL fallback it
     is frozen.
 
-    Returns ``True`` on success, ``False`` when pip exits non-zero or
-    the venv's python cannot be found.
+    Returns ``True`` on success, ``False`` when pip/deployment exits non-zero
+    or the venv's Python cannot be found.
     """
     chosen_venv = (venv_dir or default_venv_dir()).expanduser().resolve()
     venv_python = venv_python_path(chosen_venv)
@@ -360,10 +360,23 @@ def run_refresh(
     run = runner if runner is not None else _run_checked
     try:
         run(args)
-    except subprocess.CalledProcessError as exc:
+    except (OSError, subprocess.CalledProcessError) as exc:
+        return_code = getattr(exc, "returncode", "launch-error")
         print(
             f"copilot-command-ring refresh: pip install failed "
-            f"(exit={exc.returncode}).",
+            f"(exit={return_code}).",
+            file=sys.stderr,
+        )
+        return False
+    command_name = "copilot-command-ring.exe" if os.name == "nt" else "copilot-command-ring"
+    deploy_command = (str(venv_python.parent / command_name), "deploy-app-extension")
+    try:
+        run(deploy_command)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        return_code = getattr(exc, "returncode", "launch-error")
+        print(
+            "copilot-command-ring refresh: App extension deployment failed "
+            f"(exit={return_code}).",
             file=sys.stderr,
         )
         return False
@@ -1022,8 +1035,11 @@ def prompt_for_selections() -> WizardSelections:
     scope_label = _choose(
         "Where should the ring work?",
         (
-            (SCOPE_GLOBAL, "All repositories (recommended)"),
-            (SCOPE_REPO, "One repository only"),
+            (
+                SCOPE_GLOBAL,
+                "All repositories — Copilot CLI + GitHub Copilot App (recommended)",
+            ),
+            (SCOPE_REPO, "One repository only — Copilot CLI hooks"),
         ),
         default=SCOPE_GLOBAL,
     )
@@ -1226,6 +1242,8 @@ def _format_summary(
         lines.append(f"  {label.ljust(label_width)}  {value}")
     for warning in result.firmware_warnings:
         lines.append(f"  Warning: {warning}")
+    if scope == SCOPE_REPO:
+        lines.append("  GitHub Copilot App support requires global setup.")
     return lines
 
 

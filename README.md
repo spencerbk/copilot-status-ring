@@ -1,8 +1,8 @@
 # 🟢 Copilot Command Ring
 
-**A physical NeoPixel status ring for developers using GitHub Copilot CLI.**
+**A physical NeoPixel status ring for GitHub Copilot CLI and local desktop App sessions.**
 
-Copilot Command Ring turns an [Adafruit NeoPixel Ring](https://www.adafruit.com/product/1586) into a glanceable activity indicator for the Copilot CLI agent. The 24-LED ring (product 1586) and the 16-LED ring (product 1463) are both first-class targets — pick whichever you have. Native Copilot CLI hooks drive the ring directly: it lights up while the agent is thinking, flashes on tool success or failure, pulses while waiting for user input or permission, and settles into an idle breathing animation when the session ends — no terminal scraping required.
+Copilot Command Ring turns an [Adafruit NeoPixel Ring](https://www.adafruit.com/product/1586) into a glanceable activity indicator. Native hooks cover Copilot CLI; a probe-gated, marker-owned user extension adds local standalone GitHub Copilot App events without duplicating CLI sends. The 24-LED ring (product 1586) and 16-LED ring (product 1463) are both first-class targets.
 
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![CircuitPython](https://img.shields.io/badge/firmware-CircuitPython-blueviolet)
@@ -27,7 +27,7 @@ Copilot Command Ring turns an [Adafruit NeoPixel Ring](https://www.adafruit.com/
 
 ### What you'll need
 
-- **GitHub Copilot CLI** — Install by following the [Installing GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) guide. Verify it's working by running `copilot` in your terminal.
+- **GitHub Copilot CLI** — Required for native hook support. The standalone local GitHub Copilot App is optional and requires global setup plus the desktop proof described below.
 - **Python 3.9+** — Required for the host bridge. See the platform setup guides ([Windows](docs/setup-windows.md) · [macOS](docs/setup-macos.md) · [Linux](docs/setup-linux.md)) for OS-specific instructions.
 - **A USB microcontroller + NeoPixel Ring** — See [Hardware](#hardware) below for the parts list, or [`docs/hardware.md`](docs/hardware.md) for wiring diagrams.
 
@@ -56,7 +56,7 @@ cd copilot-status-ring
 
 The installer creates a `.venv` inside the cloned repo, installs the host
 bridge from your local checkout (no network install), installs global Copilot
-CLI hooks, prepares the default Raspberry Pi Pico / CircuitPython firmware
+CLI hooks and the safe App extension probe, prepares the default Raspberry Pi Pico / CircuitPython firmware
 files, and runs a dry-run validation. It does **not** require
 `copilot-command-ring` to already be on `PATH`.
 
@@ -160,11 +160,21 @@ You can activate the ring **globally** (works in every repo) or **per-repo**. Gl
 copilot-command-ring setup
 ```
 
-This is already handled by `./install.sh`. If you installed manually, this
-installs hooks to `~/.copilot/hooks/` by default, or `$COPILOT_HOME/hooks/` when
-`COPILOT_HOME` is set, so the ring works in **every** repository automatically.
-The hooks record the current Python path, so they work even when the venv isn't
-active.
+This is already handled by `./install.sh`. It installs native hooks to
+`~/.copilot/hooks/` (or `$COPILOT_HOME/hooks/`) first, then deploys the
+marker-owned App extension to `~/.copilot/extensions/copilot-app-status-ring`
+(or `$COPILOT_HOME/extensions/...`). The App extension starts in safe
+**probe** mode. Before enabling forwarding, open the App in a different
+repository and prove its diagnostic reports exactly `platform=desktop
+active=true`, then prove CLI remains inactive. Only then run:
+
+```bash
+copilot-command-ring deploy-app-extension --activate-forwarding
+```
+
+If the running App needs a restart to discover the extension, leave probe mode
+enabled until you can perform that manual check; setup never guesses from
+process names or environment variables.
 
 **Or per-repo deploy (alternative):**
 
@@ -173,6 +183,7 @@ copilot-command-ring deploy <path-to-repo>
 ```
 
 This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run-hook.sh` in the target repo. Repeat for each repo where you want the ring active.
+Repository setup is CLI-only; GitHub Copilot App support requires global setup.
 
 > **Note:** If you recreate the virtual environment or move the clone, re-run
 > `/setup-status-ring` (or `./install.sh --yes`) to refresh the hook scripts —
@@ -194,15 +205,11 @@ This creates `.github/hooks/copilot-command-ring.json`, `run-hook.ps1`, and `run
 ## How It Works
 
 ```text
-Copilot CLI
-    │
-    ▼
-$COPILOT_HOME/hooks/
-or ~/.copilot/hooks/        (global — works in all repos)
-or .github/hooks/           (per-repo — optional additional install)
-    │
-    ▼
-run-hook.ps1 / run-hook.sh
+Copilot CLI ── native global/repository hooks ──┐
+                                               │
+Local desktop App ── marker-owned extension ───┤
+  (strict context.platform === "desktop")      ▼
+                                      run-hook.ps1 / run-hook.sh
     │
     ▼
 Python host bridge  ──USB serial──▶  MCU firmware  ──▶  NeoPixel Ring (16 or 24 LEDs)
@@ -211,7 +218,7 @@ Python host bridge  ──USB serial──▶  MCU firmware  ──▶  NeoPixel
                                        or Arduino)
 ```
 
-Hook events flow from the Copilot CLI through wrapper scripts into a Python host bridge, which sends compact JSON-line messages over USB serial to the microcontroller. The MCU owns the animation loop — the host sends state transitions, not frames.
+CLI hooks and desktop App events converge on the same one-shot wrappers and Python host bridge. App forwarding is local-only, fail-open, and limited to the exact desktop host-context result; cloud sessions are not supported. The MCU owns the animation loop — the host sends state transitions, not frames.
 
 ## Hardware
 

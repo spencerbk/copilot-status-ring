@@ -9,7 +9,8 @@ All v1 deliverables are complete.
 | Area | Status | Details |
 |------|--------|---------|
 | **Host bridge** | ✅ Done | pip-installable Python package with CLI (`setup`, `deploy`, `hook`), event normalization, serial sender, auto-detection, config loading, dry-run mode |
-| **Hook integration** | ✅ Done | Global hooks via `copilot-command-ring setup` (one-time, all repos) + per-repo `.github/hooks/` via `copilot-command-ring deploy` |
+| **Hook integration** | ✅ Done | Global CLI hooks via `copilot-command-ring setup` + per-repo `.github/hooks/` via `deploy`; marker-owned local App extension is packaged and probe-gated |
+| **Local Copilot App fallback** | 🟡 Manual proof gate | Ownership-safe global deployment, exact desktop host-context gate, lifecycle bridge, and fail-open wrappers are implemented. Forwarding remains in probe mode until different-repository App discovery and CLI inactivity are observed without restarting the App. |
 | **Serial protocol** | ✅ Done | Line-delimited JSON over USB serial with optional `session` field for multi-session arbitration |
 | **CircuitPython firmware** | ✅ Done | State machine with ring animations, multi-session tracking, board auto-detection, stale session pruning (CircuitPython 10.x) |
 | **Arduino firmware** | ✅ Done | Full feature parity with CircuitPython: multi-session tracking, TTL decay, stale pruning, priority arbitration, transient overlay, idle mode, startup animation, brightness boost, dual JSON parser, watchdog (RP2040), serial silence timeout, error recovery |
@@ -60,6 +61,7 @@ Make installation easier for end users.
 | macOS/Linux installer | ✅ Done | `./install.sh` bootstraps a repo-local `.venv` inside the clone, installs the host bridge from local source, runs the setup wizard, installs hooks, prepares firmware files, and avoids relying on `copilot-command-ring` being on `PATH` |
 | pip install from Git | ✅ Done | `pip install git+https://github.com/spencerbk/copilot-status-ring.git` installs the host bridge and CLI |
 | Global hooks CLI | ✅ Done | `copilot-command-ring setup` deploys hooks to `~/.copilot/hooks/` by default, or `$COPILOT_HOME/hooks/` when `COPILOT_HOME` is set (one-time, all repos) |
+| Marker-owned App extension | 🟡 Probe gated | Packaged under the Python distribution and deployed to `$COPILOT_HOME/extensions/copilot-app-status-ring`; activation requires exact local desktop proof because App extension APIs are experimental |
 | Windows PowerShell installer | Planned | Add `install.ps1` with Windows-native Python discovery, venv creation, package install, COM-port guidance, CircuitPython drive detection, and safe delegation to the same Python setup wizard used by `install.sh` |
 | PyPI publishing | Planned | Publish to PyPI so users can `pip install copilot-command-ring` without the Git URL |
 | Prebuilt standalone binaries | Planned | Single-file executables for Windows, macOS, and Linux (no Python install required) |
@@ -77,6 +79,7 @@ Areas where the current implementation is intentionally pragmatic and may warran
 | USB disconnect/reconnect UX | When the ring is physically unplugged mid-session, the host logs serial errors at `DEBUG` level, skips failed sends without blocking Copilot CLI, and emits a one-shot stderr WARNING after three consecutive failures. There is still no automatic state resync when the ring returns; richer reconnect UX depends on a persistent host process. |
 | Persistent host daemon with heartbeat | Deferred. A long-running host daemon could send periodic heartbeats, detect ring disconnection, and resync session state on reconnect. Currently blocked on zero-touch auto-start across Windows / macOS / Linux — the project's constraint is that no user action beyond the initial install is required. Revisit when platform-agnostic auto-start (launchd / systemd user units / Windows Task Scheduler) can be scripted as part of `install.ps1` / `install.sh`. |
 | VS Code-compatible hook aliases | The host bridge currently targets Copilot CLI hook names and camelCase payloads. If VS Code agent-hook compatibility is added later, extend normalization to accept the alternate event aliases and payload shapes, then update tests and hook documentation together so CLI support remains the primary baseline. |
+| App extension API stability | User-extension discovery, `joinSession`, host context, and event subscriptions are experimental runtime-backed interfaces. Keep probe-first activation and re-prove on App upgrades; do not replace the desktop gate with process/environment heuristics. |
 
 ---
 
@@ -91,3 +94,4 @@ These items are explicitly out of scope for the foreseeable future:
 - Background host daemon / long-running host process — multi-session arbitration is handled on-device, and the project prefers the one-shot hook model over a persistent process
 - Desktop notification mirroring / system tray app — covered by the OS and Copilot CLI itself; out of scope for this hardware companion
 - Host-side periodic heartbeat pings in the current one-shot hook model — not possible without a persistent host process. The firmware breathes indefinitely when all sessions are stale (`idle_mode: "breathing"`, the default) instead of going dark, so a heartbeat is unnecessary for the common case. A future persistent daemon could add one — see *Persistent host daemon with heartbeat* above.
+- Cloud Copilot App sessions and automations; the extension accepts only exact local desktop host context.

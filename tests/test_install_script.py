@@ -52,6 +52,8 @@ def test_help_output_documents_bootstrap() -> None:
     assert result.returncode == 0
     assert "Bootstrap Copilot Command Ring" in result.stdout
     assert "--firmware-target PATH" in result.stdout
+    assert "--global" in result.stdout
+    assert "GitHub Copilot App" in result.stdout
 
 
 def test_dry_run_default_plan_uses_pico_circuitpython(tmp_path: Path) -> None:
@@ -96,6 +98,7 @@ def test_dry_run_repo_scope_and_firmware_target(tmp_path: Path) -> None:
     assert '"scope": "repo"' in output
     assert f'"repo_path": "{repo}"' in output
     assert f'"firmware_target": "{circuitpy}"' in output
+    assert "GitHub Copilot App support requires global setup." in output
 
 
 def test_script_requires_full_repo_checkout(tmp_path: Path) -> None:

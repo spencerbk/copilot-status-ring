@@ -4,28 +4,38 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from copilot_command_ring.app_extension import AppExtensionDeployError
 from copilot_command_ring.cli import main
 
 
 class TestCLISetup:
-    """The ``setup`` subcommand delegates to setup_global_hooks."""
+    """The ``setup`` subcommand installs native hooks before the App extension."""
 
+    @patch("copilot_command_ring.cli.deploy_app_extension")
     @patch("copilot_command_ring.deploy.setup_global_hooks", return_value=True)
-    def test_setup_calls_setup_global_hooks(self, mock_setup: MagicMock) -> None:
+    def test_setup_calls_setup_global_hooks(
+        self, mock_setup: MagicMock, mock_app_deploy: MagicMock
+    ) -> None:
         with pytest.raises(SystemExit) as exc_info:
             main(["setup"])
         assert exc_info.value.code == 0
         mock_setup.assert_called_once_with(force=False)
+        mock_app_deploy.assert_called_once_with(force=False)
 
+    @patch("copilot_command_ring.cli.deploy_app_extension")
     @patch("copilot_command_ring.deploy.setup_global_hooks", return_value=True)
-    def test_setup_force_flag(self, mock_setup: MagicMock) -> None:
+    def test_setup_force_flag(
+        self, mock_setup: MagicMock, mock_app_deploy: MagicMock
+    ) -> None:
         with pytest.raises(SystemExit) as exc_info:
             main(["setup", "--force"])
         assert exc_info.value.code == 0
         mock_setup.assert_called_once_with(force=True)
+        mock_app_deploy.assert_called_once_with(force=True)
 
     @patch("copilot_command_ring.deploy.setup_global_hooks", return_value=False)
     def test_setup_returns_exit_1_on_failure(self, mock_setup: MagicMock) -> None:
@@ -33,6 +43,65 @@ class TestCLISetup:
             main(["setup"])
         assert exc_info.value.code == 1
         mock_setup.assert_called_once_with(force=False)
+
+    @patch("copilot_command_ring.cli.deploy_app_extension")
+    @patch("copilot_command_ring.deploy.setup_global_hooks", return_value=True)
+    def test_setup_runs_native_hooks_before_app_extension(
+        self, mock_setup: MagicMock, mock_app_deploy: MagicMock
+    ) -> None:
+        order = []
+        mock_setup.side_effect = lambda **_kwargs: order.append("hooks") or True
+        mock_app_deploy.side_effect = lambda **_kwargs: (
+            order.append("app")
+            or SimpleNamespace(target="/extension", mode="probe", bridge_sha256="abc")
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(["setup", "--force"])
+
+        assert exc_info.value.code == 0
+        assert order == ["hooks", "app"]
+
+    @patch(
+        "copilot_command_ring.cli.deploy_app_extension",
+        side_effect=AppExtensionDeployError("unsafe target"),
+    )
+    @patch("copilot_command_ring.deploy.setup_global_hooks", return_value=True)
+    def test_setup_reports_app_failure_after_native_hooks_succeed(
+        self, mock_setup: MagicMock, _mock_app_deploy: MagicMock
+    ) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["setup", "--force"])
+
+        assert exc_info.value.code == 1
+        mock_setup.assert_called_once_with(force=True)
+
+
+class TestCLIAppExtension:
+    """The direct recovery command delegates to the ownership-safe deployer."""
+
+    @patch("copilot_command_ring.cli.deploy_app_extension")
+    def test_deploy_app_extension_defaults_to_probe(self, mock_deploy: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["deploy-app-extension"])
+        assert exc_info.value.code == 0
+        mock_deploy.assert_called_once_with(force=False, activate_forwarding=False)
+
+    @patch("copilot_command_ring.cli.deploy_app_extension")
+    def test_deploy_app_extension_activation_flag(self, mock_deploy: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["deploy-app-extension", "--force", "--activate-forwarding"])
+        assert exc_info.value.code == 0
+        mock_deploy.assert_called_once_with(force=True, activate_forwarding=True)
+
+    @patch(
+        "copilot_command_ring.cli.deploy_app_extension",
+        side_effect=AppExtensionDeployError("unsafe target"),
+    )
+    def test_deploy_app_extension_reports_failure(self, mock_deploy: MagicMock) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            main(["deploy-app-extension"])
+        assert exc_info.value.code == 1
 
 
 class TestCLIDeploy:
@@ -150,10 +219,8 @@ class TestCLIDoctor:
 class TestCLIRefresh:
     """The ``refresh`` subcommand delegates to setup_wizard.run_refresh.
 
-    ``refresh`` is the user-facing recovery for the install-staleness
-    trap: a frozen ``pip install`` snapshots the source, so hooks keep
-    running the previous version after ``git pull``. ``refresh`` reruns
-    only the pip-install step (no prompts, no firmware, no hooks).
+    ``refresh`` reinstalls Python and then invokes the newly installed
+    deployment command rather than stale imported deployment code.
     """
 
     @patch("copilot_command_ring.setup_wizard.run_refresh", return_value=True)

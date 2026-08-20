@@ -268,6 +268,35 @@ copilot-command-ring deploy /path/to/your-repo --force
 If the hooks can't find any Python runner, they now print a diagnostic to stderr:
 `copilot-command-ring: no runner found; rerun setup/deploy`
 
+### Local GitHub Copilot App does not drive the ring
+
+Refresh the marker-owned probe without bypassing ownership:
+
+```powershell
+copilot-command-ring deploy-app-extension
+```
+
+The target is `$COPILOT_HOME/extensions/copilot-app-status-ring`, or
+`~/.copilot/extensions/copilot-app-status-ring` when `COPILOT_HOME` is unset.
+If deployment reports a missing/invalid ownership marker, inspect or manually
+move the existing directory; `--force` intentionally cannot overwrite an
+unowned target.
+
+With `COPILOT_RING_APP_DEBUG=1`, use a different repository with no local
+hooks/extensions and look for exactly `platform=desktop active=true
+mode=probe`. Confirm CLI remains inactive and native CLI events still arrive
+once, then run:
+
+```powershell
+copilot-command-ring deploy-app-extension --activate-forwarding
+```
+
+If the running App does not discover a newly deployed extension without a
+restart, leave it in probe mode until a restart is operationally allowed. Do
+not infer App identity from process names or environment variables. Missing
+wrappers, malformed input, spawn errors, and the five-second timeout all fail
+open without changing Copilot decisions.
+
 **Check that wrapper scripts are executable (macOS/Linux):**
 
 ```bash
@@ -455,7 +484,13 @@ Fix: run
 copilot-command-ring refresh
 ```
 
-`refresh` re-runs only the wizard's pip install step (no prompts, no firmware writes, no hook redeployment). It uses the same auto-detection as the wizard: a local clone yields an editable reinstall; otherwise it upgrades the frozen install from the GitHub URL. The hooks pick up the new code on the next event because they import from `site-packages` each invocation.
+`refresh` re-runs the wizard's pip install step, then invokes the newly
+installed `copilot-command-ring deploy-app-extension` command (no prompts,
+firmware writes, or native hook redeployment). A local clone yields an editable
+reinstall; otherwise it upgrades the frozen install from the GitHub URL. The
+native hooks pick up host code on the next invocation, while the App deployment
+atomically refreshes its packaged release and preserves an already-proven
+`forwarding` mode.
 
 **Check data pin:**
 
