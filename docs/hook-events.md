@@ -46,7 +46,7 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `postToolUse` (denied) | `tool_denied` | Short flash | Amber | `tool`, `result` |
 | `postToolUse` (failure) | `tool_error` | Red flash | Red | `tool`, `result` |
 | `postToolUseFailure` | `tool_error` | Red flash | Red | `tool`, `error` |
-| `permissionRequest` | `awaiting_permission` | Blink | Yellow | `tool` |
+| `permissionRequest` | `working` | Spinner | Magenta | `tool` |
 | `subagentStart` | `subagent_active` | Chase | Magenta | `agent` |
 | `subagentStop` | `idle` | Return to idle | — | `agent`, `reason` |
 | `agentStop` | `agent_idle` | Dim breathing | White (dim) | `reason` |
@@ -59,16 +59,15 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 
 When a `notification` arrives with `notification_type: "elicitation_dialog"`, the host promotes it to the persistent `awaiting_elicitation` state instead of the transient `notify` flash. This signals that the agent is blocked waiting for user input (e.g. an interactive form or choice). The pulse animation uses a raised brightness floor so the ring never fully extinguishes, distinguishing it from the hard on/off blink of `awaiting_permission`. Priority is above `awaiting_permission` but below `error`, and lower-priority transient flashes are suppressed while elicitation is active so the ring keeps pulsing yellow until the user responds.
 
-The `permissionRequest` hook maps directly to `awaiting_permission` so blocking
-approval prompts remain visible even in hosted or nested CLI sessions that do
-not emit the asynchronous `permission_prompt` notification. Auto-approved
-requests immediately advance to `preToolUse`, which replaces the yellow state
-with the normal magenta working spinner.
+The `permissionRequest` hook maps to `working` because it fires before rules,
+automatic decisions, and user prompting. It is not evidence that a prompt is
+visible. Hosted or nested CLI paths that omit the asynchronous
+`permission_prompt` notification intentionally remain `working` rather than
+showing a false-positive blocked state.
 
 When a `notification` arrives with
-`notification_type: "permission_prompt"`, it reinforces the same persistent
-`awaiting_permission` state for CLI sessions that emit the documented
-notification.
+`notification_type: "permission_prompt"`, it provides the precise visible-prompt
+signal and promotes the session to the persistent `awaiting_permission` state.
 
 When a generic `notification` arrives while the winning persistent state is `working`, `subagent_active`, or `compacting`, the firmware suppresses the white flash and leaves the busy animation running.
 
@@ -181,22 +180,21 @@ When a `preToolUse` event fires for a tool that blocks on user input (currently 
 ### Permissions
 
 ```json
-{"event":"permissionRequest","state":"awaiting_permission","tool":"bash","ttl_s":600,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
+{"event":"permissionRequest","state":"working","tool":"bash","ttl_s":300,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
 The `permissionRequest` hook fires before the permission service decides
-whether to auto-approve or prompt. It maps to `awaiting_permission` as the
-reliable fallback; auto-approved requests immediately continue to
-`preToolUse`, restoring the normal working animation. When the CLI also emits a
-`notification` with `notification_type: "permission_prompt"`, that event keeps
-the same yellow state active:
+whether rules or automatic decisions allow the action or the user must be
+prompted, so it remains `working`. Only a `notification` with
+`notification_type: "permission_prompt"` proves that a visible prompt is
+blocking the user and promotes the state to `awaiting_permission`:
 
 ```json
 {"event":"notification","state":"awaiting_permission","notification_type":"permission_prompt","message":"Edit file: foo.py","ttl_s":600,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
-In `--yolo` mode, auto-approved requests may show only a momentary yellow state
-before `preToolUse`; prompts that still require explicit approval remain yellow.
+Hosted and nested paths that omit the asynchronous notification intentionally
+remain `working` rather than showing a false-positive permission prompt.
 
 ### Sub-agents
 
