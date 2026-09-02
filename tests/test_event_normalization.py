@@ -191,11 +191,13 @@ def test_normalize_post_tool_use_failure_empty_payload():
 # ── permissionRequest ─────────────────────────────────────────────────────
 
 
-def test_normalize_permission_request_extracts_tool():
+def test_normalize_permission_request_marks_awaiting_permission():
+    """Permission requests remain yellow until execution actually begins."""
     payload = _load_fixture("permissionRequest.json")
     result = normalize_event("permissionRequest", payload)
-    assert result["state"] == "working"
+    assert result["state"] == "awaiting_permission"
     assert result["tool"] == "bash"
+    assert result["ttl_s"] == 600
 
 
 # ── subagentStart ─────────────────────────────────────────────────────────

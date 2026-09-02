@@ -312,7 +312,7 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 | `postToolUse` (denied) | `tool_denied` | flash | amber |
 | `postToolUse` (failure) | `tool_error` | flash | red |
 | `postToolUseFailure` | `tool_error` | flash | red |
-| `permissionRequest` | `working` | spinner | magenta |
+| `permissionRequest` | `awaiting_permission` | blink | yellow |
 | `subagentStart` | `subagent_active` | chase | magenta |
 | `subagentStop` | `idle` | off | — |
 | `agentStop` | `agent_idle` | breathing | dim white |
@@ -320,7 +320,7 @@ Each Copilot CLI hook event maps to a visual state on the ring:
 | `errorOccurred` | `error` | flash | red |
 | `notification` | `notify` | flash (suppressed while busy) | white |
 | `notification` (`elicitation_dialog`) | `awaiting_elicitation` | pulse | yellow |
-| `notification` (`permission_prompt`) | `awaiting_permission` | pulse | yellow |
+| `notification` (`permission_prompt`) | `awaiting_permission` | blink | yellow |
 | `sessionEnd` | `off` → `agent_idle` (breathing) | off / breathing | — |
 
 When a `preToolUse` event fires for a tool that blocks on user input (currently `ask_user`), the host promotes it to `awaiting_elicitation` so the ring pulses yellow instead of showing the purple working spinner. For backward compatibility, the host also recognizes older `exit_plan_mode` tool events the same way.

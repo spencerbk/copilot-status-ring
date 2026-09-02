@@ -60,10 +60,15 @@ class TestHookMainIntegration:
         result = _run_hook("preToolUse", {"toolName": "edit"})
         assert result.stdout == ""
 
-    def test_permission_request_stdout_empty(self) -> None:
+    def test_permission_request_logs_awaiting_state_without_stdout(self) -> None:
         """permissionRequest is especially sensitive to stdout."""
         result = _run_hook("permissionRequest", {"toolName": "bash"})
+        assert result.returncode == 0
         assert result.stdout == ""
+        assert (
+            '"state": "awaiting_permission"' in result.stderr
+            or '"state":"awaiting_permission"' in result.stderr
+        )
 
     def test_dry_run_logs_to_stderr(self) -> None:
         result = _run_hook("preToolUse", {"toolName": "bash"})
