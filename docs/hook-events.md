@@ -1,6 +1,7 @@
 # Hook Events Reference
 
-This document describes every Copilot CLI hook event that the Copilot Command Ring handles, the serial protocol, and the normalized messages sent to the firmware.
+This document describes Copilot CLI hooks, the probe-gated local desktop App
+event bridge, the serial protocol, and normalized messages sent to firmware.
 
 ## Contents
 
@@ -54,13 +55,50 @@ Every message includes at minimum an `event` (the original Copilot hook event na
 | `sessionEnd` | `off` (→ `agent_idle` unless `idle_mode="off"`) | Off or breathing | — | `reason` |
 | `notification` | `notify` | Flash (suppressed while busy) | White | `notification_type`, `message` |
 | `notification` (`elicitation_dialog`) | `awaiting_elicitation` | Pulse (smooth sine fade) | Yellow | `notification_type`, `message` |
-| `notification` (`permission_prompt`) | `awaiting_permission` | Pulse (hard on/off blink) | Yellow | `notification_type`, `message` |
+| `notification` (`permission_prompt`) | `awaiting_permission` | Blink | Yellow | `notification_type`, `message` |
 
 When a `notification` arrives with `notification_type: "elicitation_dialog"`, the host promotes it to the persistent `awaiting_elicitation` state instead of the transient `notify` flash. This signals that the agent is blocked waiting for user input (e.g. an interactive form or choice). The pulse animation uses a raised brightness floor so the ring never fully extinguishes, distinguishing it from the hard on/off blink of `awaiting_permission`. Priority is above `awaiting_permission` but below `error`, and lower-priority transient flashes are suppressed while elicitation is active so the ring keeps pulsing yellow until the user responds.
 
-When a `notification` arrives with `notification_type: "permission_prompt"`, the host promotes it to the persistent `awaiting_permission` state. This fires only when the user is actually blocked on an interactive permission dialog — in `--yolo` mode, permissions are auto-approved and no `permission_prompt` notification is emitted. The `permissionRequest` hook event itself always maps to `working` because it fires for both interactive and auto-approved permissions.
+The `permissionRequest` hook maps to `working` because it fires before rules,
+automatic decisions, and user prompting. It is not evidence that a prompt is
+visible. Hosted or nested CLI paths that omit the asynchronous
+`permission_prompt` notification intentionally remain `working` rather than
+showing a false-positive blocked state.
+
+When a `notification` arrives with
+`notification_type: "permission_prompt"`, it provides the precise visible-prompt
+signal and promotes the session to the persistent `awaiting_permission` state.
 
 When a generic `notification` arrives while the winning persistent state is `working`, `subagent_active`, or `compacting`, the firmware suppresses the white flash and leaves the busy animation running.
+
+### Local desktop App event coverage
+
+The marker-owned extension forwards only after
+`(await session.rpc.mcp.apps.getHostContext()).context.platform === "desktop"`.
+Missing, non-desktop, and error results stay inactive, preserving native CLI
+hooks without duplicate sends. Every SDK hook callback returns `null`; the
+five-second wrapper boundary catches errors and never changes Copilot
+decisions.
+
+| App callback/event | Wrapper event |
+|---|---|
+| `onSessionStart` | `sessionStart` |
+| `onUserPromptSubmitted` | `userPromptSubmitted` |
+| `onPreToolUse` | `preToolUse` |
+| `onPostToolUse` | `postToolUse` |
+| `onPostToolUseFailure` | `postToolUseFailure` |
+| `onErrorOccurred` | `errorOccurred` |
+| `onAgentStop` | `agentStop` |
+| `onSessionEnd` | `sessionEnd` |
+| `permission.requested` | `notification` with `notification_type=permission_prompt` |
+| `session.compaction_start` | `preCompact` (no fabricated trigger) |
+| aborted `session.idle` only | `agentStop` with `stopReason=aborted` |
+
+The App bridge does not register tools, commands, permission/input handlers, or
+elicitation handlers, and it does not synthesize subagent events. It covers
+local standalone desktop sessions only; cloud activity is out of scope.
+Discovery, host context, and subscription shapes are experimental
+runtime-evidence-backed behavior, not stable documented SDK guarantees.
 
 ---
 
@@ -145,13 +183,18 @@ When a `preToolUse` event fires for a tool that blocks on user input (currently 
 {"event":"permissionRequest","state":"working","tool":"bash","ttl_s":300,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
-The `permissionRequest` hook fires for both interactive and auto-approved (yolo) permissions, so it always maps to `working`. When the user is actually blocked on a permission dialog, the Copilot CLI also emits a `notification` with `notification_type: "permission_prompt"`:
+The `permissionRequest` hook fires before the permission service decides
+whether rules or automatic decisions allow the action or the user must be
+prompted, so it remains `working`. Only a `notification` with
+`notification_type: "permission_prompt"` proves that a visible prompt is
+blocking the user and promotes the state to `awaiting_permission`:
 
 ```json
 {"event":"notification","state":"awaiting_permission","notification_type":"permission_prompt","message":"Edit file: foo.py","ttl_s":600,"idle_mode":"breathing","brightness":0.04,"pixel_count":24}
 ```
 
-In `--yolo` mode, no `permission_prompt` notification is emitted — the ring stays on the purple working spinner.
+Hosted and nested paths that omit the asynchronous notification intentionally
+remain `working` rather than showing a false-positive permission prompt.
 
 ### Sub-agents
 

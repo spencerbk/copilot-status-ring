@@ -69,7 +69,7 @@ if [ ! -f "$PROFILE_PATH" ]; then
       "Guid": "$GUID",
       "Working Directory": "$REPO_DIR",
       "Custom Directory": "Yes",
-      "Initial Text": "copilot --yolo --experimental",
+      "Initial Text": "copilot --yolo --experimental --max-autopilot-continues 22",
       "Tab Color": {
         "Red Component": $R,
         "Green Component": $G,
@@ -86,6 +86,18 @@ EOF
     echo "Installed iTerm2 Dynamic Profile: $PROFILE_PATH"
     echo "The profile will appear in iTerm2's Profiles menu automatically."
     sleep 1
+else
+    LEGACY_INITIAL_TEXT='"Initial Text": "copilot --yolo --experimental"'
+    CAPPED_INITIAL_TEXT='"Initial Text": "copilot --yolo --experimental --max-autopilot-continues 22"'
+    LEGACY_WORK_INITIAL_TEXT='"Initial Text": "agency copilot --yolo --experimental"'
+    CAPPED_WORK_INITIAL_TEXT='"Initial Text": "agency copilot --yolo --experimental --max-autopilot-continues 22"'
+    if grep -Fq "$LEGACY_INITIAL_TEXT" "$PROFILE_PATH"; then
+        sed -i '' "s|$LEGACY_INITIAL_TEXT|$CAPPED_INITIAL_TEXT|g" "$PROFILE_PATH"
+        echo "Migrated iTerm2 Dynamic Profile continuation cap: $PROFILE_PATH"
+    elif grep -Fq "$LEGACY_WORK_INITIAL_TEXT" "$PROFILE_PATH"; then
+        sed -i '' "s|$LEGACY_WORK_INITIAL_TEXT|$CAPPED_WORK_INITIAL_TEXT|g" "$PROFILE_PATH"
+        echo "Migrated iTerm2 Dynamic Profile continuation cap: $PROFILE_PATH"
+    fi
 fi
 
 # -----------------------------------------------------------
@@ -103,7 +115,7 @@ tell application "iTerm"
         -- Profile not loaded yet; fall back to direct session
         create window with default profile
         tell current session of current window
-            write text "cd '$REPO_DIR' && copilot --yolo --experimental"
+            write text "cd '$REPO_DIR' && copilot --yolo --experimental --max-autopilot-continues 22"
         end tell
     end try
     activate

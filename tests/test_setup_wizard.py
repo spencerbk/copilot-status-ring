@@ -809,6 +809,19 @@ def test_format_summary_minimal_setup(tmp_path: Path) -> None:
     assert "not written" in body
 
 
+def test_format_summary_explains_repo_scope_is_cli_only(tmp_path: Path) -> None:
+    lines = _format_summary(
+        _bare_result(tmp_path),
+        pixel_count=DEFAULT_PIXEL_COUNT,
+        scope=SCOPE_REPO,
+        approve_firmware=False,
+    )
+
+    assert any(
+        "GitHub Copilot App support requires global setup." in line for line in lines
+    )
+
+
 def test_format_summary_includes_detected_port_and_firmware(tmp_path: Path) -> None:
     """Optional rows render only when their fields are populated."""
     target = tmp_path / "CIRCUITPY"
@@ -1804,12 +1817,13 @@ def test_run_refresh_invokes_pip_install_editable_for_local_clone(
     )
 
     assert ok is True
-    assert len(captured) == 1
+    assert len(captured) == 2
     cmd = captured[0]
     assert cmd[1:5] == ["-m", "pip", "install", "--quiet"]
     assert "--upgrade" in cmd
     assert "-e" in cmd
     assert cmd[-1] == str(tmp_path)
+    assert captured[1][-1] == "deploy-app-extension"
 
 
 def test_run_refresh_uses_frozen_install_for_git_url(tmp_path: Path) -> None:
@@ -1828,6 +1842,7 @@ def test_run_refresh_uses_frozen_install_for_git_url(tmp_path: Path) -> None:
     assert ok is True
     assert "-e" not in captured[0]
     assert captured[0][-1] == PACKAGE_SPEC_DEFAULT
+    assert captured[1][-1] == "deploy-app-extension"
 
 
 def test_run_refresh_returns_false_when_venv_python_missing(
@@ -1867,6 +1882,28 @@ def test_run_refresh_returns_false_when_pip_fails(tmp_path: Path) -> None:
     assert ok is False
 
 
+def test_run_refresh_returns_false_when_app_deployment_fails(tmp_path: Path) -> None:
+    import subprocess as _subprocess
+
+    venv = _writable_venv_python(tmp_path)
+    calls = 0
+
+    def _fail_second(cmd: Sequence[str]) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise _subprocess.CalledProcessError(returncode=1, cmd=list(cmd))
+
+    ok = run_refresh(
+        venv_dir=venv,
+        package_spec=str(tmp_path),
+        runner=_fail_second,
+    )
+
+    assert ok is False
+    assert calls == 2
+
+
 def test_run_refresh_falls_back_to_defaults_when_args_omitted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1884,5 +1921,4 @@ def test_run_refresh_falls_back_to_defaults_when_args_omitted(
     ok = run_refresh(runner=lambda cmd: captured.append(list(cmd)))
     assert ok is True
     assert captured[0][-1] == str(tmp_path)
-
-
+    assert captured[1][-1] == "deploy-app-extension"

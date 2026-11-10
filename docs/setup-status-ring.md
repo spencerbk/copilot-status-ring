@@ -18,8 +18,11 @@ keeping the durable setup logic in the Python package.
    detected; users on that path should run `copilot-command-ring refresh` to
    pick up upstream changes (see
    [Recover from a stale install](troubleshooting.md#animations-look-wrong)).
-3. Asks whether hooks should be installed globally for all repos or deployed to
-   one target repo.
+3. Asks whether integration should be global (**Copilot CLI + local GitHub
+   Copilot App**) or limited to one repository (**Copilot CLI hooks only**).
+   Global setup installs native CLI hooks first, then deploys the marker-owned
+   App extension in safe probe mode. Repository setup prints `GitHub Copilot
+   App support requires global setup.` and never deploys the App extension.
 4. Prompts for the board, firmware runtime, NeoPixel data pin, ring size
    (24 / 16 / 12 LEDs), and **idle mode** (**Breathing** keeps the ring lit
    with a dim breathing animation when every session is silent — the default;
@@ -79,6 +82,47 @@ keeping the durable setup logic in the Python package.
    for recovery).
 8. Runs a dry-run simulation command after hooks are installed.
 
+## Local GitHub Copilot App extension
+
+Global setup manages this exact layout:
+
+```text
+$COPILOT_HOME/extensions/copilot-app-status-ring/
+├── extension.mjs
+├── .copilot-command-ring-managed.json
+└── releases/<bridge-sha256>/bridge.mjs
+```
+
+Without `COPILOT_HOME`, the root is `~/.copilot`. Deployment uses a
+cross-platform exclusive lock, same-filesystem staging, a content-addressed
+bridge release, and atomic marker replacement. An update refuses a missing or
+invalid ownership marker even with `--force`; unknown files are never silently
+deleted. The marker is the active-release pointer and records schema version
+`1`, owner `copilot-command-ring`, extension `copilot-app-status-ring`, the
+active SHA, tracked releases, and mode (`probe` or `forwarding`).
+
+App discovery, `joinSession`, host context, and event subscriptions are
+experimental runtime-backed interfaces rather than documented stable SDK
+promises. Setup therefore deploys `probe` mode first. With
+`COPILOT_RING_APP_DEBUG=1`, open the standalone App from a different repository
+that has no local hooks/extensions and require:
+
+```text
+[copilot-command-ring] app-extension discovered platform=desktop active=true mode=probe
+```
+
+Also verify Copilot CLI remains non-desktop/inactive and its native hooks still
+send once. Then explicitly attest that proof:
+
+```powershell
+copilot-command-ring deploy-app-extension --activate-forwarding
+```
+
+If discovery requires restarting the App, do not infer success; leave probe
+mode in place until the manual proof can be performed. The direct recovery
+command `copilot-command-ring deploy-app-extension` refreshes packaged files
+without activating an unproven probe.
+
 CircuitPython can copy prepared `boot.py` and `code.py` to a detected or supplied
 `CIRCUITPY` drive and attempts to install the `neopixel` dependency with
 `circup`; if that library install fails, setup still completes and prints the
@@ -100,6 +144,10 @@ cd copilot-status-ring
 creates `<repo>/.venv` inside the clone, installs the package into it from
 local source, then runs `setup-status-ring` by module path so the user never
 needs `copilot-command-ring` to already be on `PATH`.
+
+`copilot-command-ring refresh` first reinstalls Python, then invokes the newly
+installed `copilot-command-ring deploy-app-extension` executable. It does not
+reuse stale in-process deployment code.
 
 ## Fallback terminal command
 

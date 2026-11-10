@@ -6,8 +6,9 @@ Subcommands
 -----------
 setup                 Install global hooks (all repos, one-time).
 deploy <target-dir>   Deploy hooks into a specific repository.
+deploy-app-extension  Deploy the marker-owned local App extension.
 hook <event_name>     Handle a Copilot CLI hook event (called by deployed wrappers).
-refresh               Re-run only the host pip install step (post git-pull / release upgrade).
+refresh               Reinstall the host and refresh the local App extension.
 set-pixels <count>    Update the ring's LED count in the local config file.
 doctor                Run a one-shot health check (config, ports, lock, ping).
 """
@@ -17,12 +18,17 @@ from __future__ import annotations
 import argparse
 import sys
 
+from .app_extension import AppExtensionDeployError, deploy_app_extension
 
-def main(argv: list[str] | None = None) -> None:
+
+def main(argv: list[str] | None = None) -> None:  # pylint: disable=too-many-branches
     """Top-level CLI dispatcher."""
     parser = argparse.ArgumentParser(
         prog="copilot-command-ring",
-        description="Copilot Command Ring — NeoPixel status ring for GitHub Copilot CLI",
+        description=(
+            "Copilot Command Ring - NeoPixel status ring for GitHub Copilot CLI "
+            "and the local desktop App"
+        ),
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -34,7 +40,7 @@ def main(argv: list[str] | None = None) -> None:
     setup_parser.add_argument(
         "--force",
         action="store_true",
-        help="Overwrite existing hook files without prompting",
+        help="Refresh hooks and the owned App extension without prompting",
     )
 
     # ── deploy ─────────────────────────────────────────────────────────
@@ -50,6 +56,22 @@ def main(argv: list[str] | None = None) -> None:
         "--force",
         action="store_true",
         help="Overwrite existing hook files without prompting",
+    )
+
+    # ── deploy-app-extension ───────────────────────────────────────────
+    app_extension_parser = sub.add_parser(
+        "deploy-app-extension",
+        help="Deploy or refresh the marker-owned GitHub Copilot App extension",
+    )
+    app_extension_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Refresh managed files (never bypasses ownership validation)",
+    )
+    app_extension_parser.add_argument(
+        "--activate-forwarding",
+        action="store_true",
+        help="Activate only after different-repository exact desktop proof",
     )
 
     # ── setup-status-ring / wizard ──────────────────────────────────────
@@ -76,9 +98,9 @@ def main(argv: list[str] | None = None) -> None:
     refresh_parser = sub.add_parser(
         "refresh",
         help=(
-            "Re-install / upgrade the host package into the wizard's venv. "
-            "Use after `git pull` or a release upgrade so the hooks pick up "
-            "the new code."
+            "Re-install / upgrade the host package into the wizard's venv, "
+            "then deploy the newly installed App extension. Use after "
+            "`git pull` or a release upgrade."
         ),
     )
     refresh_parser.add_argument(
@@ -140,6 +162,18 @@ def main(argv: list[str] | None = None) -> None:
         from .deploy import setup_global_hooks
 
         ok = setup_global_hooks(force=args.force)
+        if ok:
+            try:
+                result = deploy_app_extension(force=args.force)
+            except AppExtensionDeployError as exc:
+                print(f"GitHub Copilot App extension deployment failed: {exc}", file=sys.stderr)
+                ok = False
+            else:
+                print(
+                    f"Deployed GitHub Copilot App extension to {result.target} "
+                    f"(mode={result.mode}, bridge={result.bridge_sha256}).",
+                    file=sys.stderr,
+                )
         sys.exit(0 if ok else 1)
 
     elif args.command == "deploy":
@@ -147,6 +181,22 @@ def main(argv: list[str] | None = None) -> None:
 
         ok = deploy_hooks(args.target_dir, force=args.force)
         sys.exit(0 if ok else 1)
+
+    elif args.command == "deploy-app-extension":
+        try:
+            result = deploy_app_extension(
+                force=args.force,
+                activate_forwarding=args.activate_forwarding,
+            )
+        except AppExtensionDeployError as exc:
+            print(f"GitHub Copilot App extension deployment failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        print(
+            f"Deployed GitHub Copilot App extension to {result.target} "
+            f"(mode={result.mode}, bridge={result.bridge_sha256}).",
+            file=sys.stderr,
+        )
+        sys.exit(0)
 
     elif args.command == "hook":
         # Rewrite sys.argv so hook_main sees the event name at argv[1]

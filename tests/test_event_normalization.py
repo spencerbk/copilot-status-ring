@@ -191,11 +191,28 @@ def test_normalize_post_tool_use_failure_empty_payload():
 # ── permissionRequest ─────────────────────────────────────────────────────
 
 
-def test_normalize_permission_request_extracts_tool():
+def test_normalize_permission_request_stays_working():
     payload = _load_fixture("permissionRequest.json")
     result = normalize_event("permissionRequest", payload)
     assert result["state"] == "working"
     assert result["tool"] == "bash"
+    assert result["ttl_s"] == 300
+
+
+def test_permission_request_sequence_never_falsely_marks_awaiting_permission():
+    session_id = "stable-session"
+    messages = [
+        normalize_event(event, {"toolName": "bash", "sessionId": session_id})
+        for event in ("preToolUse", "permissionRequest", "postToolUse")
+    ]
+
+    assert [message["state"] for message in messages] == [
+        "working",
+        "working",
+        "tool_ok",
+    ]
+    assert [message["session"] for message in messages] == [session_id] * 3
+    assert all(message["state"] != "awaiting_permission" for message in messages)
 
 
 # ── subagentStart ─────────────────────────────────────────────────────────

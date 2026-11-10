@@ -155,6 +155,20 @@ def _coerce_pixel_count(value):
     return None
 
 
+def _clockwise_head_index(forward, num_pixels):
+    """Map forward animation progress to the physical ring index.
+
+    Adafruit's 12- and 24-pixel rings advance their LED indices clockwise,
+    while the 16-pixel ring advances counter-clockwise (per Adafruit's PCB
+    layouts). Preserve forward motion for the clockwise-indexed rings and
+    reverse it for the 16-pixel ring; unknown/custom sizes keep the reversed
+    behavior to avoid changing established output.
+    """
+    if num_pixels == 12 or num_pixels == 24:
+        return forward % num_pixels
+    return (-forward) % num_pixels
+
+
 def _state_brightness(state):
     """Return current base brightness plus any state-specific boost."""
     brightness = _runtime_brightness
@@ -331,10 +345,10 @@ class StatusRing:
 
     def _anim_spinner(self, color, elapsed, width, period):
         frac = (elapsed % period) / period
-        # Adafruit NeoPixel rings are wired so LED indices increase
-        # counter-clockwise when viewed from the LED face. Negate the
-        # head's motion so the lit segment appears to rotate clockwise.
-        head = (-int(frac * self.num_pixels)) % self.num_pixels
+        # Map forward progress to the physical index so the lit segment
+        # rotates clockwise on every supported Adafruit ring size.
+        forward = int(frac * self.num_pixels)
+        head = _clockwise_head_index(forward, self.num_pixels)
         for i in range(self.num_pixels):
             dist = (head - i) % self.num_pixels
             if dist < width:
